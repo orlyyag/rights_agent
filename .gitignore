@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+data/raw/
+data/corpus/
+chroma/
+*.sqlite
+.DS_Store
+.gstack/
+.claude/
