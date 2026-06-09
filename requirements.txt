@@ -4,5 +4,6 @@ chromadb>=0.5
 langgraph>=0.2
 python-telegram-bot>=21
 ragas>=0.2
+langsmith>=0.4              # @traceable observability (A8); opt-in via LANGSMITH_API_KEY
 python-dotenv>=1.0
 pytest>=8.0

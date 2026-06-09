@@ -15,6 +15,20 @@ import config
 
 T = TypeVar("T")
 
+# LangSmith @traceable (A8) — optional. When the SDK is installed and
+# LANGSMITH_API_KEY is set in .env, every embed/generate call shows up as a
+# traced run. When not installed, this degrades to a transparent no-op so the
+# wrapper, the tests, and production all keep the exact same shape.
+try:
+    from langsmith import traceable  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover
+    def traceable(*args, **kwargs):  # type: ignore[no-redef]
+        if args and callable(args[0]):
+            return args[0]
+        def _deco(fn):
+            return fn
+        return _deco
+
 
 class LLMError(RuntimeError):
     """Raised when a Gemini call fails after retries; callers degrade gracefully (§0 #6)."""
@@ -50,6 +64,7 @@ def _with_retry(fn: Callable[[], T], *, what: str) -> T:
     raise LLMError(f"{what} failed after {config.LLM_RETRIES + 1} attempts: {last}") from last
 
 
+@traceable(name="embed", run_type="embedding")
 def embed(texts: Sequence[str], *, task_type: str) -> list[list[float]]:
     """Embed a batch of strings.
 
@@ -72,6 +87,7 @@ def embed(texts: Sequence[str], *, task_type: str) -> list[list[float]]:
     return _with_retry(_call, what="embed")
 
 
+@traceable(name="generate", run_type="llm")
 def generate(prompt: str, *, system: str | None = None,
              temperature: float | None = None) -> str:
     """Generate grounded text.

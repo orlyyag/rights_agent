@@ -100,6 +100,21 @@ ALLOWED_CHAT_IDS = _parse_ids(_env("ALLOWED_CHAT_IDS"))  # from @userinfobot
 RATE_LIMIT_PER_MIN = _env_int("KZ_RATE_LIMIT_PER_MIN", 20)
 MIN_QUESTION_WORDS = _env_int("KZ_MIN_QUESTION_WORDS", 3)  # short greetings retrieve noise
 
+# ── Observability — LangSmith tracing (A8) ──────────────────────────────────
+# Opt-in: set LANGSMITH_API_KEY in .env and every embed/generate call (and Tier-1
+# agent-graph nodes) shows up in https://smith.langchain.com under
+# LANGSMITH_PROJECT. Zero overhead when the key is unset.
+LANGSMITH_API_KEY = _env("LANGSMITH_API_KEY") or _env("LANGCHAIN_API_KEY")
+LANGSMITH_PROJECT = _env("LANGSMITH_PROJECT") or _env("LANGCHAIN_PROJECT") or "kolzchut-bot"
+if LANGSMITH_API_KEY:
+    # langsmith SDK + langchain both look at the env; set both legacy + new names
+    # so any caller (our @traceable + any langchain code Tier-1 might add) finds it.
+    os.environ.setdefault("LANGSMITH_API_KEY", LANGSMITH_API_KEY)
+    os.environ.setdefault("LANGSMITH_TRACING", "true")
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGSMITH_PROJECT", LANGSMITH_PROJECT)
+    os.environ.setdefault("LANGCHAIN_PROJECT", LANGSMITH_PROJECT)
+
 # ── Telegram (§9, R6) ────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")
 TELEGRAM_PARSE_MODE = "HTML"          # NOT MarkdownV2 (R6) — Hebrew titles/URLs shatter MarkdownV2

@@ -138,6 +138,7 @@ Architecture (§4) + Evaluations (§8) already meet/exceed the ask. **Confirmed:
 | A5 | **Technical-KPI table** filled with *achieved* values post-eval: accuracy (≥90% target), latency (<2s after A2), error rate (<5%), uptime (n/a local — note as polling demo). |
 | A6 | **Pitch:** 8-min flow (Hook→Problem→Solution→Architecture→Eval→Impact→Demo→Next), practice to 6; **record a backup demo video**; pairs split parts; no "age of AI" opener. |
 | A7 | **Problem §1 personal hook** — add "why this team chose it" (rubric prefers a problem you know from work/daily life). |
+| A8 | **Observability — LangSmith tracing** (`LANGSMITH_API_KEY` in `.env`). The central LLM wrapper (`rag/llm.py`) decorates `embed`/`generate` with `@traceable`; Tier-1 will trace each agent-graph node (retrieve, rewrite, grade_docs, generate) and the eval harness. Powers (a) the **A2** baseline→optimized latency/cost measurement (per-call timings + token counts in the dashboard, no instrumentation code to write), (b) failure forensics (see exactly which retrieval/grade decision drove a bad answer), (c) the eval harness UI. **Opt-in via env var** — zero overhead if the key is unset; tests stay LLM-free. |
 
 ---
 
