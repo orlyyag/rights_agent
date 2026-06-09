@@ -27,7 +27,7 @@ users. Incremental manifest-diff sync **stays in core scope**.
 | 1 | **One Chroma collection**, every chunk tagged `lang`. Retrieve **same-language first** (`where={"lang": ...}`); fallback = **relax/swap the filter**, not a live translation step. Validate he↔ru cross-lingual recall with a **Day-1/2 spike (~10 questions)** before trusting vector-only fallback. Use MediaWiki `langlinks` to offer the same-language source URL when a cross-lingual hit occurs. | retriever.py, index.py, graph.py |
 | 2 | **Corpus = throwaway scaffolding.** Load official Paragraph Corpus under `source='corpus'`; bot uses it Day 1. After the pipeline is validated, **cut Hebrew over to `source='pipeline'`** and drop the corpus. **Never serve both at once.** Russian is pipeline-only. `source` is a config flag. | index.py, retriever.py, config |
 | 3 | **clean.py models its output on the official corpus chunking format**; **verify** whether the corpus preserved tables. If tables were flattened, add **HTML-tables→Markdown** conversion in the cleaner for money/eligibility pages (Russian has no corpus, so it needs this regardless). | ingest/clean.py, chunk.py |
-| 4 | **Blue-green index swap.** `sync.py` builds `kz_v{N+1}`, runs a smoke query, then **flips an active-collection pointer in config**; bot reads the active name; previous collection retained for one-line rollback. Bot never reads a half-built index. | index.py, sync.py, retriever.py |
+| 4 | **Blue-green index swap.** `sync.py` builds `kz_v{N+1}`, runs a smoke query, then **flips an active-collection pointer in config**; bot reads the active name **per-request** (see R7); previous collection retained for one-line rollback. Bot never reads a half-built index. | index.py, sync.py, retriever.py |
 | 5 | **Access control.** `ALLOWED_CHAT_IDS` allowlist + **per-user/minute rate cap** enforced in `input_guardrails`; unknown IDs get a polite "private demo" reply. (Counts toward the Guardrails module.) | bot/handlers.py, guardrails.py, .env |
 | 6 | **Graceful degradation.** Gemini calls wrapped with **timeout + 1 retry (backoff)**; Telegram sends in try/except; on failure send a localized "having trouble, try again" message; **never crash the process.** Centralized in one wrapper (DRY). | bot/handlers.py, rag/graph.py, central Gemini module |
 | 7 | **acquire is resumable/idempotent by design** — diff manifest `lastrevid` vs the raw layer, fetch only missing/changed, safe to Ctrl-C and rerun. **Same diff function powers incremental sync.** | ingest/acquire.py, mediawiki.py |
@@ -95,6 +95,33 @@ This supersedes the front-loading in §12.
 - Cloud Run deploy (local long-poll is the demo) · voice→text transcription (graceful "please type" is enough)
   · translate-in-loop cross-lingual fallback (only if the spike shows weak vector recall)
   · live-path LLM-call optimization (Issue-11 lever) · corpus chunk reverse-engineering comparison.
+
+### Grill round 2 — final scope + corrections (2026-06-09, LOCKED — supersede conflicting detail below)
+
+Hard deadline: **ready by Saturday 2026-06-13** (~4-day clock from Tue 06-09: Tue–Fri build,
+Sat submit; Fri-eve→Sat is Shabbat). **Claude Code implements** → coding is not the bottleneck;
+the **human-only critical path is** (Russian golden verification, similarity-floor calibration,
+on-phone Hebrew bidi check, demo rehearsal). Scope cut to **must-have-only**: the 4 graded
+modules (RAG, Agents, Guardrails, Evaluations) + bilingual demo + update automation.
+**Never cut any of the four.**
+
+| # | Decision | Affects |
+|---|---|---|
+| R1 | **Corpus tables are flattened** (official corpus is "paragraph text", May-2024 snapshot — verified upstream). Tier-0 Hebrew demo **avoids tabular benefit-amount questions**; correct numbers come only from our pipeline. Make **"table page renders numbers"** an explicit eval case that motivates the corpus→pipeline cutover. Do **not** patch the corpus. | clean.py, eval, demo script |
+| R2 | **Native Russian is the required path** (ru wiki = **4,072 articles**, ~55% of he's 7,338 — verified). Cross-lingual fallback (filter-relax) is a **measured experiment, not load-bearing**; the T7 spike characterizes it. For the rare he-only topic a ru user hits: retrieve cross-lingual, answer in ru, cite the he page with a "source in Hebrew" note. Accept cross-lingual faithfulness as a known soft edge. | retriever, eval, §13 |
+| R3 | **grade_docs is the authoritative scope/refuse gate;** the **similarity floor is a lenient pre-filter only.** Precedence: `floor (loose) → grade_docs (strict, re-retrieve ×1) → refuse`. **Calibrate the floor empirically, per-language** (in- vs out-of-scope top-1 distributions); record the separation in a config comment. No separate scope-classifier call — grade_docs doubles as it. | retriever, guardrails, config |
+| R4 | **Re-retrieve = terminology-broadening (colloquial → official KZ term) + filter-relax — one mechanism, unified with R2.** grade_docs **returns a reason** that selects the transform. **Grading is ONE batched LLM call** over all candidates (not per-candidate). Add a **colloquial-recovery eval case** that pass-1 misses and pass-2 recovers (proves the agent loop earns its keep). | graph.py, retriever, eval |
+| R5 | **Memory feeds the rewrite/retrieve step** (history-aware "condense question", last ~2–3 turns), with a **follow-up-vs-new-topic** decision in the rewrite prompt (prevents context bleed). Kept **minimal** (in-memory last-N + `/reset`). Two-turn follow-up is a golden case in he + ru. | graph.py, session.py, eval |
+| R6 | **Telegram HTML parse mode** (not MarkdownV2 — Hebrew titles/URLs shatter MarkdownV2 escaping). **One `render_answer(body, citations, disclaimer, lang)`** owns all escaping + bidi. `disable_web_page_preview=True`. **Day-1 on-phone bidi smoke** (Hebrew body + long he-slug URL + disclaimer). | bot/handlers.py, prompts.py |
+| R7 | **Retriever resolves the active-collection pointer PER-REQUEST** (cache the handle, reopen only on name change; atomic rename flip). Makes the live-update DoD work **without a restart** — required because in-memory memory forbids mid-demo restart. | retriever.py, sync.py, config |
+| R8 | **Russian golden set is built from ru-native-page topics** (not translated he-only doc_ids). Report **native vs cross-lingual separately**. Sizes: he ~40–50, ru ~20–30 human-verified. **Don't claim he↔ru differences below the noise floor.** ~5–8 adversarial/out-of-scope per language. hit@k on the **pipeline** index. | eval/* |
+| R9 | **§0 Delivery Tiers govern sequencing.** §12's day-grid is **illustrative/superseded** (do not follow its Day-1 he+ru). §21 lanes anchor to the **Tier-0 corpus** Chroma. **Interface-freeze (config active-pointer + `source` flag, `rag/llm.py` signature, chunk metadata schema) = deliverable #1, hour 1.** | §12, §21, all |
+
+**Kept (must-have):** corpus fast-start as a Day-1 safety net (cutover optional); memory minimal.
+**Cut (nice-to-have):** Cloud Run · voice→text (keep the free "please type" reply) · translate-in-loop ·
+live-path optimization lever · corpus chunk reverse-engineering · corpus-vs-pipeline hit@k comparison ·
+live-baseline comparison · fancy charts · blue-green smoke/rollback polish · `/lang` · `/sources`.
+(`/start` `/help` `/reset` + auto language-detect stay.)
 
 ---
 
@@ -388,6 +415,13 @@ validated against it. Russian and freshness come **only** from our pipeline.
 **Memory:** per-user session (last N turns) via a LangGraph checkpointer keyed by
 Telegram `chat_id`; `/reset` clears it. Enables follow-ups ("and for freelancers?").
 
+> **Round-2 wiring (R3–R7).** The **rewrite node consumes the last ~2–3 turns** to emit a
+> standalone query (condense), and decides **follow-up vs new topic** (no context bleed) — memory
+> feeds *retrieval*, not just generation. **grade_docs** is the authoritative refuse gate, runs as
+> **one batched LLM call** returning a *reason*; the similarity floor is only a lenient pre-filter.
+> Weak grade → **re-retrieve ×1** via terminology-broaden / filter-relax (same mechanism as the
+> cross-lingual fallback).
+
 ---
 
 ## 7. Guardrails module
@@ -437,9 +471,10 @@ Guardrails AI (heavier; deferred).
 ## 9. Telegram bot layer
 
 - **Library:** `python-telegram-bot`.
-- **Commands:** `/start`, `/help`, `/lang he|ru|auto`, `/reset`, `/sources`.
-- **UX:** "typing…" action while processing; answer + clickable source links; language auto-detected, overridable.
-- **Runtime:** long-polling locally (POC), **webhook on Cloud Run** for the final demo.
+- **Commands:** `/start`, `/help`, `/reset`; language **auto-detected** (he/ru). `/lang` and `/sources` cut (scope).
+- **Formatting (R6):** **HTML parse mode** (not MarkdownV2); one `render_answer(body, citations, disclaimer, lang)` owns all escaping + bidi; `disable_web_page_preview=True`. Day-1 on-phone bidi smoke.
+- **UX:** "typing…" action while processing; answer + clickable source links.
+- **Runtime:** **long-polling** is the demo (local, paired phone users). Cloud Run webhook is cut (TODOS, Tier-2).
 - **Thin layer:** all logic lives in the agent core; the bot only maps Telegram I/O ↔ agent.
 
 ---
@@ -487,6 +522,10 @@ kolzchut-bot/
 
 ## 12. One-week plan (2 people)
 
+> ⚠️ **Illustrative / superseded by §0 Delivery Tiers + Grill round 2 (R9).** The real clock is
+> **Tue 06-09 → Sat 06-13 (~4 days), Claude-Code-implemented.** Do **not** follow this grid's
+> Day-1 he+ru — Tier-0 is Hebrew-only. Kept for the role split + task texture only.
+
 Roles: **A = Data/RAG/Eval**, **B = Agent/Bot/Guardrails/Deploy** (swap as needed).
 
 | Day | Goal | A | B |
@@ -509,7 +548,7 @@ Telegram with guardrails). Days 4–6 are depth (automation, evals, deploy).
 | Risk | Mitigation |
 |---|---|
 | 1-week clock | Hard MVP at Day 3; official corpus fast-start; cap agent loops |
-| Russian coverage thin | Cross-lingual fallback (retrieve he, translate); translate golden subset |
+| Russian *topic-level* coverage gaps (not "thin" — ru wiki is 4,072 articles) | Native ru is the required path (R2); filter-relax fallback only for he-only topics; ru golden set targets ru-native pages |
 | WAF blocks bot | Real User-Agent + throttle + `maxlag`; cache raw layer |
 | HTML cleaning messy | Start from official corpus format; iterate cleaner on our HTML |
 | Hallucination | Strict grounding prompt + output faithfulness guardrail + refuse-if-empty |
@@ -592,8 +631,10 @@ Telegram with guardrails). Days 4–6 are depth (automation, evals, deploy).
 | bot input | voice/photo/sticker | unit | graceful reply (§0 #8) | "please type" (clear) |
 
 **Critical gap to actively close:** table→number correctness is the one failure that is
-*silent and user-visible-as-wrong*. Mitigation (§0 #3) must be verified by the Hebrew
-spike + an eval case on a known benefit-amount page before the demo.
+*silent and user-visible-as-wrong*. **Update (R1):** the official corpus is confirmed-likely
+*flattened* ("paragraph text"), so the **Tier-0 Hebrew demo curates away from tabular
+benefit-amount questions**; correct numbers come only from our pipeline, gated by an eval case
+on a known benefit-amount page (table→Markdown). Mitigation (§0 #3) lives in the pipeline, not the corpus.
 
 ## 21. Worktree parallelization strategy
 
@@ -622,6 +663,10 @@ Effort shown human / CC (AI-assisted).
 - [ ] **T8 (P1, human ~2h / CC ~20m)** — tests — Pure-logic unit suite (manifest-diff, clean/table, chunk, guardrail rules) + mocked-LLM node tests. §0 #9. Files: `tests/`. Verify: `pytest -m "not integration"` green, no network.
 - [ ] **T9 (P2, human ~1.5h / CC ~20m)** — tests — One E2E integration smoke (he+ru) vs fixture index. §0 #10. Files: `tests/test_e2e.py`. Verify: `pytest -m integration` returns cited answer, language matches.
 - [ ] **T10 (P3, human ~1h / CC ~15m)** — docs — Document the Issue-11 live-path optimization lever (offline judge / embedding grade) as a ready switch. §0 #11. Files: `PLAN.md`/`README.md`.
+- [ ] **T11 (P1, CC ~20m + human bidi check)** — bot — `render_answer()` in HTML parse mode (escaping + bidi + `disable_web_page_preview`). R6. Files: `bot/handlers.py`, `rag/prompts.py`. Verify: Hebrew answer + he-slug URL + disclaimer render correctly on a real phone.
+- [ ] **T12 (P1, human ~1h / CC ~15m)** — retriever — Similarity-floor calibration, per-language, against in/out-of-scope top-1 distributions; floor = lenient pre-filter, grade_docs is the gate. R3. Files: `rag/retriever.py`, `config.py`. Verify: off-topic refused, rare on-topic not wrongly refused.
+- [ ] **T13 (P1, CC ~20m)** — eval — Add follow-up (two-turn) + colloquial-recovery golden cases, he + ru; build ru set from ru-native topics; report native vs cross-lingual separately. R4/R5/R8. Files: `eval/golden_*.jsonl`, `eval/run_judge.py`. Verify: follow-up resolves; colloquial pass-2 recovers.
+- [ ] **T14 (P1, CC ~10m)** — retriever — Per-request active-collection pointer (handle-cached, atomic flip) so live-update needs no restart. R7. Files: `rag/retriever.py`, `scripts/sync.py`, `config.py`. Verify: flip pointer mid-session → next query uses new index, no restart.
 
 ---
 
