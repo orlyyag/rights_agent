@@ -35,10 +35,13 @@ _SYSTEM = (
     "- Bulleted items: start the line with \"* \" (asterisk + space).\n"
     "- Do NOT use # headings, tables, code blocks, italics, links, or other markdown.\n"
     "\n"
-    "If the sources do NOT contain the answer to the question:\n"
-    "- Refuse explicitly. Never invent facts, numbers, or eligibility rules.\n"
-    "- Briefly describe what the sources DO cover, and contrast with what was asked.\n"
-    "- Example shape (Hebrew): \"בהסתמך על המקורות שסופקו, אין בטקסטים מידע שעונה על השאלה לגבי X. הטקסטים עוסקים ב-Y, לא ב-X.\""
+    "If the sources do NOT contain the answer to the question, return EXACTLY one\n"
+    "sentence in this template and nothing else — no description of source topics,\n"
+    "no bullets, no caveats, no sign-off:\n"
+    "- Hebrew: \"בהסתמך על המקורות שסופקו, אין בטקסטים מידע שעונה על השאלה לגבי <נושא>.\"\n"
+    "- Russian: \"В предоставленных источниках нет информации, отвечающей на вопрос о <тема>.\"\n"
+    "Where <נושא>/<тема> is the topic the user asked about, in a few words.\n"
+    "Never invent facts, numbers, or eligibility rules."
 )
 
 

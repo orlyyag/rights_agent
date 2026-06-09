@@ -25,6 +25,26 @@ def test_refuses_when_generation_blank():
     assert a.refused is True
 
 
+def test_template_refusal_strips_citations_and_disclaimer():
+    """When the model returns the refusal template, drop citations + disclaimer."""
+    chunks = [_rc("A", "https://a")]
+    refusal_text = "בהסתמך על המקורות שסופקו, אין בטקסטים מידע שעונה על השאלה לגבי מזג האוויר."
+    a = answer.answer("?", "he", retrieve_fn=lambda q, l: chunks,
+                      generate_fn=lambda p, system=None: refusal_text)
+    assert a.refused is True
+    assert a.text == refusal_text
+    assert a.citations == []
+    assert a.disclaimer == ""
+
+
+def test_template_refusal_russian():
+    chunks = [_rc("A", "https://a")]
+    ru_refusal = "В предоставленных источниках нет информации, отвечающей на вопрос о погоде."
+    a = answer.answer("?", "ru", retrieve_fn=lambda q, l: chunks,
+                      generate_fn=lambda p, system=None: ru_refusal)
+    assert a.refused is True and a.citations == []
+
+
 def test_grounded_answer_with_deduped_citations():
     chunks = [_rc("A", "https://a"), _rc("A", "https://a"), _rc("B", "https://b")]
     a = answer.answer("q", "he", retrieve_fn=lambda q, l: chunks,

@@ -10,6 +10,19 @@ import config
 from rag import llm, prompts, retriever
 from schema import Answer, Citation, RetrievedChunk
 
+# Prefixes the model emits when it follows the refusal template in prompts._SYSTEM.
+# Detection lets us strip citations + caveat + disclaimer on refusal — a refusal isn't
+# a "substantive answer" so the legal/AI notes don't apply.
+_REFUSAL_PREFIXES: dict[str, tuple[str, ...]] = {
+    "he": ("בהסתמך על המקורות",),
+    "ru": ("В предоставленных источниках",),
+}
+
+
+def _is_template_refusal(text: str, lang: str) -> bool:
+    head = text.lstrip()
+    return any(head.startswith(p) for p in _REFUSAL_PREFIXES.get(lang, ()))
+
 
 def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None) -> Answer:
     """Answer one question. ``retrieve_fn``/``generate_fn`` are injectable for tests."""
@@ -25,12 +38,16 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None) -> A
     text = generate_fn(
         prompts.build_generation_prompt(question, keep, lang),
         system=prompts.system_prompt(lang),
-    )
-    if not text.strip():  # empty generation → treat as refusal, never send blank
+    ).strip()
+    if not text:  # empty generation → treat as refusal, never send blank
         return Answer(text=prompts.refusal(lang), lang=lang, citations=[],
                       disclaimer="", refused=True)
 
-    return Answer(text=text.strip(), lang=lang, citations=_citations(keep),
+    if _is_template_refusal(text, lang):
+        # Model used the one-sentence refusal template — drop citations/caveat/disclaimer.
+        return Answer(text=text, lang=lang, citations=[], disclaimer="", refused=True)
+
+    return Answer(text=text, lang=lang, citations=_citations(keep),
                   disclaimer=prompts.disclaimer(lang), refused=False)
 
 
