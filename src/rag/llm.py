@@ -34,7 +34,8 @@ def _get_client():
 
 
 def _with_retry(fn: Callable[[], T], *, what: str) -> T:
-    """Run ``fn`` with ``config.LLM_RETRIES`` extra attempts + linear backoff."""
+    """Exponential backoff (``LLM_BACKOFF_S * 2**attempt``) — defaults to 5/10/20/40/80s,
+    enough to ride out a per-minute quota refresh (RESOURCE_EXHAUSTED / 429)."""
     last: Exception | None = None
     for attempt in range(config.LLM_RETRIES + 1):
         try:
@@ -42,7 +43,10 @@ def _with_retry(fn: Callable[[], T], *, what: str) -> T:
         except Exception as exc:  # noqa: BLE001 — single choke point by design (§0 #6)
             last = exc
             if attempt < config.LLM_RETRIES:
-                time.sleep(config.LLM_BACKOFF_S * (attempt + 1))
+                wait = config.LLM_BACKOFF_S * (2 ** attempt)
+                print(f"  ⚠ {what} attempt {attempt+1} failed ({type(exc).__name__}); "
+                      f"retrying in {wait:g}s", flush=True)
+                time.sleep(wait)
     raise LLMError(f"{what} failed after {config.LLM_RETRIES + 1} attempts: {last}") from last
 
 

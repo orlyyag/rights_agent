@@ -78,8 +78,8 @@ REWRITE_HISTORY_TURNS = 3  # turns fed to the condense/rewrite step (R5)
 
 # ── Central LLM wrapper behavior (§0 #6) ─────────────────────────────────────
 LLM_TIMEOUT_S = _env_float("KZ_LLM_TIMEOUT_S", 20.0)
-LLM_RETRIES = 1
-LLM_BACKOFF_S = 1.0
+LLM_RETRIES = _env_int("KZ_LLM_RETRIES", 4)         # 4 retries → 5 attempts (covers quota refresh)
+LLM_BACKOFF_S = _env_float("KZ_LLM_BACKOFF_S", 5.0)  # base; doubles each attempt
 
 # ── Access control (§0 #5) ───────────────────────────────────────────────────
 def _parse_ids(raw: str) -> frozenset[int]:

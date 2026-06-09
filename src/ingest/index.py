@@ -35,6 +35,8 @@ def build_collection(chunks: Iterable[Chunk], name: str, *, collection=None,
     """
     col = collection if collection is not None else get_or_create(name, client=client)
     chunks = list(chunks)
+    total = len(chunks)
+    done = 0
     for batch in _batched(chunks, batch_size):
         vectors = llm.embed([c.text for c in batch], task_type=config.EMBED_TASK_DOCUMENT)
         col.upsert(
@@ -43,4 +45,6 @@ def build_collection(chunks: Iterable[Chunk], name: str, *, collection=None,
             documents=[c.text for c in batch],
             metadatas=[c.meta.to_metadata() for c in batch],
         )
+        done += len(batch)
+        print(f"  embedded {done}/{total} chunks", flush=True)
     return col

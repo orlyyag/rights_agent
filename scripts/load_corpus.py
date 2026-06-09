@@ -15,8 +15,16 @@ from ingest import corpus, index
 
 def main(path: str | None = None, collection: str = "kz_corpus_he") -> None:
     chunks = corpus.load_corpus_chunks(path)
-    print(f"Loaded {len(chunks)} corpus chunks; embedding + upserting → {collection} …")
-    index.build_collection(chunks, collection)
+    # Resumable: skip ids already in the collection so a re-run after a 429/crash
+    # only embeds what's missing. upsert is idempotent on id, but skipping avoids
+    # re-billing for chunks we already paid for.
+    col = index.get_or_create(collection)
+    existing = set(col.get(include=[])["ids"])
+    remaining = [c for c in chunks if c.id not in existing]
+    print(f"Loaded {len(chunks)} chunks; {len(existing)} already in '{collection}'; "
+          f"{len(remaining)} to embed.", flush=True)
+    if remaining:
+        index.build_collection(remaining, collection, collection=col)
     config.set_active_collection(collection)
     print(f"Done. Active collection flipped to '{collection}' (read per-request, R7).")
 
