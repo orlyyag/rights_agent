@@ -68,7 +68,7 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 |---|---|---|---|
 | 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | ✅ **Modules done + R1 verified** · 🌙 full HE crawl running overnight | See "Brick 1 results" below |
 | 2 | **Russian native index** — same pipeline against `/w/ru/api.php` | Pending | Unblocks bilingual demo (contribution #2) |
-| 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | Pending | The "Agents" graded module |
+| 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | ✅ **Modules done · opt-in via `KZ_ANSWER_PATH=agent`** | See "Brick 3 results" below — bot stays on linear path until you flip |
 | 4 | **Full evals** — RAGAS + LLM-judge + hit@k on the agent path; bilingual report | Partial (HE baseline done) | RU golden set needs human-verified rows from ru-native pages (R8, T16) |
 | 5 | **Update automation** — `scripts/sync.py` (manifest-diff → pipeline → blue-green flip) + scheduled run | Pending | §2 DoD: "change page → re-sync → answer reflects" |
 | 6 | **A2 latency improvement** — offline judge + embedding-based grade; baseline → optimized | Pending | Baseline is **3.50s mean**, target <2s |
@@ -138,6 +138,68 @@ cat data/manifest/he.json | python3 -c "import sys, json; print(len(json.load(sy
 If the crawl is still running when you wake: `tail -f data/acquire.log` to watch. If you want to stop it: `pkill -f 'scripts/acquire.py'`. To resume: re-run the same `python scripts/acquire.py he` command. State is in `data/manifest/he.json` and `data/raw/he/*.json`.
 
 ### What's NOT done in brick 1 (intentional handoff)
+
+- **No embedding.** Cost ~$1-3 + decision is yours.
+- **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
+- **No active-pointer flip.** Bot still serves from `kz_corpus_he`. Flipping is a one-liner once `kz_pipeline_he` is built and smoke-tested.
+- **No automated `scripts/sync.py`.** That's brick 5 (update automation).
+
+---
+
+## Brick 3 results — LangGraph agentic loop (overnight, 4 commits)
+
+**Topology B** wired per PLAN §6 / R4:
+
+```
+START → rewrite → retrieve → grade ─┬── generate → END
+                                     ├── re_retrieve → retrieve → grade  (×1)
+                                     └── refuse → END
+```
+
+| Module | LOC | Tests | What it does |
+|---|---|---|---|
+| `rag/grade.py` | ~140 | 9 | **ONE** batched LLM call grades every candidate for relevance + per-chunk reason + an overall failure mode that drives the re-retrieve transform. R3 (grade is the authoritative gate) + R4 (one batched call, not N). |
+| `rag/rewrite.py` | ~130 | 7 | History-aware rewriter (R5). `rewrite_query()` condenses follow-ups + detects new-topic to prevent Frankenqueries; **no LLM call when history is empty** (Tier-0 cost preserved). `broaden_terminology()` is the second entrypoint used by re-retrieve. |
+| `rag/graph.py` | ~190 | 13 | LangGraph compiled state machine; every node is `@traceable` so a Telegram turn produces a full trace tree in LangSmith. The re-retrieve picks `broaden_terminology` for `narrow_terminology` failures and **filter-relax** (R2/R4 unified) for `cross_lingual_thin`. Loop cap = `GRADE_LOOP_CAP` (default 1). |
+| `rag/answer.py` | (extended) | 3 | `answer_agent(question, lang, history)` is a drop-in for the linear `answer()`. `answer_default(...)` routes by `config.ANSWER_PATH`. |
+| `bot/handlers.py` | (1-line) | — | `build_reply` now calls `answer_default` → env-var flip switches every Telegram message over with no code change. |
+| `rag/retriever.py` | (1-arg) | — | Added `relax_filter=False` kwarg (drops the lang `where` filter); used by the agent's cross-lingual fallback. |
+
+**Total: ~460 new LOC + 32 mocked-LLM tests.** Full suite: **104/104 green**.
+
+### How to flip the bot to the agent path
+
+```bash
+# 1. Add to .env (default is "linear")
+echo "KZ_ANSWER_PATH=agent" >> .env
+
+# 2. Restart the bot
+scripts/run_bot.sh
+
+# 3. Test on Telegram — and watch the trace tree in LangSmith
+#    https://smith.langchain.com → kolzchut-bot project
+```
+
+To revert: change `agent` back to `linear` in `.env` and restart.
+
+### Cost note before flipping
+
+Each Telegram turn on the agent path does:
+- 1 LLM call for rewrite (only if history is non-empty — Tier-0 saves this)
+- 1 LLM call for grade_docs (batched over all candidates)
+- 1 LLM call for generate
+- **+1 LLM call** if re-retrieve fires (broaden_terminology) plus another grade
+
+So worst case is **~4 calls per turn** vs Tier-0's **1 call**. With Gemini 3.5 Flash that's still a few cents per message — fine for a demo, worth confirming on volume.
+
+### What's NOT done in brick 3 (intentional handoff)
+
+- **No live spot-check yet.** Module + integration tests are all mocked. The agent's first real run against Gemini + Chroma is your decision — flip the env var and send a few Telegram messages.
+- **No follow-up cases in the eval set yet.** The `eval/golden_he.jsonl` is single-turn. Once you spot-check the agent works, rerun `eval/run_eval.py` against the agent path (set `KZ_ANSWER_PATH=agent` in the env when running) to get the new hit@5 / correctness numbers — that's the brick-3 vs brick-0 delta that the rubric A2 wants.
+- **No memory wiring from `bot/handlers.py` yet.** `bot/session.py` records turns but `handlers.build_reply` doesn't pass history into the answer call. Trivial change once you opt in: pass `session.history(chat_id)` to `answer_default`.
+- **`bot/handlers.py` is the right place to thread memory.** One line: `answer_fn(text, lang, history=session.history(chat_id))` after extending `answer_default` to accept history. Skipped to keep the linear path API stable.
+
+---
 
 - **No embedding.** Cost ~$1-3 + decision is yours.
 - **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
