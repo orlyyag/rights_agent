@@ -36,6 +36,24 @@ def test_load_corpus_accepts_list_and_dict(tmp_path):
     assert len(corpus.load_corpus_chunks(dct)) == 1
 
 
+def test_load_corpus_column_oriented_with_scalar_column(tmp_path):
+    """Pandas df.to_json default with a uniform column (``license``) written as a
+    scalar — the actual on-disk shape of the real Webiks corpus."""
+    column = {
+        "doc_id":  {"0": 11, "1": 22},
+        "title":   {"0": "A", "1": "B"},
+        "link":    {"0": "ua", "1": "ub"},
+        "content": {"0": "a-body", "1": "b-body"},
+        "license": "Creative Commons BY-NC-SA 2.5",  # scalar — broadcast across rows
+    }
+    p = tmp_path / "cols.json"
+    p.write_text(json.dumps(column), encoding="utf-8")
+    chunks = corpus.load_corpus_chunks(p)
+    assert len(chunks) == 2
+    assert chunks[0].meta.pageid == 11 and chunks[0].meta.title == "A"
+    assert chunks[1].meta.url == "ub" and "b-body" in chunks[1].text
+
+
 class _FakeUpsertCol:
     def __init__(self):
         self.calls = []

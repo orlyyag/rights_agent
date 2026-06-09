@@ -37,10 +37,37 @@ def corpus_record_to_chunk(rec: dict, idx: int, lang: str = "he", source: str = 
     return Chunk(id=chunk_id(source, lang, pageid, idx), text=text, meta=meta)
 
 
+_EXPECTED_FIELDS = {"doc_id", "title", "link", "content"}
+
+
+def _records(data: Any) -> list[dict]:
+    """Normalize the corpus JSON to a list of record dicts. Supports three shapes:
+    (a) list of records, (b) dict keyed by doc_id with record values, and
+    (c) column-oriented pandas-style {field: {row_idx: value}} — the actual on-disk
+    shape (verified 2026-06-09, 24,487 rows, 143 MB)."""
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        raise ValueError(f"unsupported corpus shape: {type(data).__name__}")
+    if _EXPECTED_FIELDS & set(data.keys()):  # column-oriented
+        # Some columns (e.g. ``license``) may be a scalar instead of a per-row dict
+        # when the value is uniform — broadcast those across rows. Use the first
+        # actual per-row dict column to determine the row index.
+        first_col = next(c for c in data.values() if isinstance(c, dict))
+        row_keys = list(first_col.keys())
+        rows: list[dict] = []
+        for k in row_keys:
+            row = {}
+            for field, col in data.items():
+                row[field] = col[k] if isinstance(col, dict) else col
+            rows.append(row)
+        return rows
+    return list(data.values())  # dict-of-records
+
+
 def load_corpus_chunks(path: str | Path | None = None, *, lang: str = "he",
                        source: str = "corpus") -> list[Chunk]:
-    """Read the corpus JSON (list of records, or dict keyed by doc_id) → Chunks."""
+    """Read the corpus JSON → Chunks (handles list / id-keyed dict / column-oriented dict)."""
     path = Path(path) if path else (config.CORPUS_DIR / "corpus.json")
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    records = list(data.values()) if isinstance(data, dict) else list(data)
-    return [corpus_record_to_chunk(rec, i, lang, source) for i, rec in enumerate(records)]
+    return [corpus_record_to_chunk(rec, i, lang, source) for i, rec in enumerate(_records(data))]
