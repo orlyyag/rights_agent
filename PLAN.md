@@ -45,6 +45,29 @@ disclaimers live in **`prompts.py`** (eval-versioned).
 transcription · the translate-in-the-loop cross-lingual fallback (only if the Issue-1
 spike shows vector-only recall is weak) · the Issue-11 live-path optimization.
 
+### Grill decisions (2026-06-09 — concrete parameters)
+
+Pins the choices the architecture review left vague. SDK: **`google-genai`**
+(`client.models.*`).
+
+| # | Decision |
+|---|---|
+| Q1 | **Embeddings:** `gemini-embedding-001` at **3072-dim (full)**. Asymmetric `task_type`: `RETRIEVAL_DOCUMENT` for chunks, `RETRIEVAL_QUERY` for queries. (Corpus is small; full fidelity helps he↔ru cross-lingual recall.) |
+| Q2 | **Generation:** **Gemini 3 Flash** (current GA Flash) for rewrite + grade + generate. **Pin an explicit version** in config (not `-latest`); **low/zero live thinking budget**. ⚠️ Gemini 2.0 Flash was shut down 2026-06-01 — do not use. Escalate generate→Pro only if eval shows he/ru quality gaps. |
+| Q3 | **Chunking:** section-based, **~512 tokens, ~50 overlap**, prepend `PageTitle > Section` to each chunk. Reverse-engineer the official corpus's chunk boundaries as a **reference** and compare our output on overlapping he pages. |
+| Q4 | **Retrieval:** fetch **top-8 → grade_docs → keep ≤5** into generate. **Similarity floor** = the refuse/off-topic path (no separate scope-classifier LLM call). |
+| Q5 | **Russian verification:** team reads Russian → **human-verified ru golden subset (~20–30 Q)** + native spot-checks. Russian is a first-class claim; demo both languages. |
+| Q6 | **Index inclusion:** **curated**. He = mirror the official corpus's page set. Ru + new/changed pages = keep substantive rights guides (min length + content template/category); drop stubs, portals, lists, disambiguation. |
+| Q7 | **Memory:** LangGraph **in-memory** checkpointer keyed by `chat_id`, last ~5 turns, `/reset` clears. ⚠️ Restart wipes sessions — avoid mid-demo restarts. |
+| Q8 | **Logging/PII:** log question + retrieved doc-ids + answer + latency to a **local, gitignored** file; **regex-redact PII** (9-digit IL IDs, phone numbers) before writing; never shipped. Doubles as a source of real golden-set questions. |
+| Q9 | **Quota:** **billing enabled** (paid tier) so the index build + RAGAS eval aren't throttled by free-tier rate limits. Batch embeds; throttle KZ fetches only. |
+| — | **Lang detect:** script-based (Hebrew vs Cyrillic char counts), `/lang` overrides, lib fallback for Latin/ambiguous. **Injection defense:** grounding system prompt (answer only from retrieved KZ; ignore instructions in user input or page text) + retrieved-content-as-data + small denylist. **Bot ops:** BotFather token in `.env`; `ALLOWED_CHAT_IDS` from `@userinfobot`; rate cap ~15–20 msg/min/user. |
+
+**Banked defaults:** citations = footer list of up to 3 `📄 [Title](url)` + per-language
+disclaimer on every substantive answer; `grade_docs` scores each candidate (relevant/not
+or 1–5), keep above threshold, refuse if none pass after one re-retrieve; sync = manual
+`sync.py` + one scheduled run (cron/launchd) to *demonstrate* automation, not an always-on daemon.
+
 ---
 
 ## 1. Project overview
@@ -297,7 +320,7 @@ Guardrails AI (heavier; deferred).
 
 | Area | Choice | Why | Trade-off |
 |---|---|---|---|
-| LLM + embeddings | **Google Gemini** | Course fit, strong he/ru, native embeddings | Vendor lock, quota |
+| LLM + embeddings | **Gemini 3 Flash** (gen) + **`gemini-embedding-001`** @3072 (see §0 Grill) | Course fit, strong he/ru, native embeddings | Vendor lock, quota |
 | Orchestration | **LangGraph** | Inspectable agent graph, easy guardrail/eval nodes | Learning curve vs plain calls |
 | Vector store | **Chroma (local)** | Zero infra, metadata filter, demo-friendly | Not distributed/scale |
 | Data ingest | **parse-HTML + manifest-diff** | Clean rendered content + cheap exact deltas | HTML cleaning effort |
