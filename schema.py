@@ -58,3 +58,32 @@ class RawDoc(TypedDict):
 def chunk_id(source: str, lang: str, pageid: int, idx: int) -> str:
     """Stable, collision-free chunk id so re-index upserts (not duplicates)."""
     return f"{source}:{lang}:{pageid}:{idx}"
+
+
+# ── Live-path contracts (shared by rag + bot) ───────────────────────────────
+@dataclass(frozen=True)
+class Citation:
+    """A source link shown in the answer footer (R6)."""
+
+    title: str
+    url: str
+
+
+@dataclass
+class RetrievedChunk:
+    """A chunk returned by the retriever, with its similarity score."""
+
+    text: str
+    meta: ChunkMeta
+    score: float       # cosine similarity, ~[0, 1] (higher = closer)
+
+
+@dataclass
+class Answer:
+    """The agent's result. The bot renders this to HTML (R6); it never builds answer text itself."""
+
+    text: str
+    lang: str          # "he" | "ru"
+    citations: list[Citation]
+    disclaimer: str
+    refused: bool = False
