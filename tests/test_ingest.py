@@ -77,7 +77,7 @@ def test_build_collection_batches_and_upserts(monkeypatch):
 
     col = _FakeUpsertCol()
     index.build_collection([_chunk(i) for i in range(5)], "kz_v2",
-                           collection=col, batch_size=2)
+                           collection=col, batch_size=2, inter_batch_sleep_s=0)
 
     assert len(col.calls) == 3                      # 2 + 2 + 1
     all_ids = [i for c in col.calls for i in c["ids"]]

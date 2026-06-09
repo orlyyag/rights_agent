@@ -80,6 +80,10 @@ REWRITE_HISTORY_TURNS = 3  # turns fed to the condense/rewrite step (R5)
 LLM_TIMEOUT_S = _env_float("KZ_LLM_TIMEOUT_S", 20.0)
 LLM_RETRIES = _env_int("KZ_LLM_RETRIES", 4)         # 4 retries → 5 attempts (covers quota refresh)
 LLM_BACKOFF_S = _env_float("KZ_LLM_BACKOFF_S", 5.0)  # base; doubles each attempt
+# Pace embed batches so a sustained build stays under the 1M-TPM Gemini Embedding cap
+# (a batch of 100 chunks ≈ 25k tokens; sleeping 0.5s between batches → ~24 batches/min
+# ≈ 600k TPM, ~40% headroom). Set to 0 to disable.
+INTER_BATCH_SLEEP_S = _env_float("KZ_INTER_BATCH_SLEEP_S", 0.5)
 
 # ── Access control (§0 #5) ───────────────────────────────────────────────────
 def _parse_ids(raw: str) -> frozenset[int]:
