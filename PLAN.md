@@ -148,6 +148,106 @@ demo. We do **not** copy their backend code.
 
 ## 4. Architecture overview
 
+### 4.0 System at a glance (high-level)
+
+Three planes over one shared store. §4.1 below zooms into the live path.
+
+```
+        ┌──────────────────────────────────────────────────────────────────────────┐
+        │   CROSS-CUTTING:  config.py  ·  rag/llm.py (central Gemini wrapper)         │
+        │   models + dims, ACTIVE-collection pointer, ALLOWED_CHAT_IDS, thresholds    │
+        │   one embed()/generate() with timeout+retry+fallback — single mock point    │
+        └─────▲───────────────────────────▲───────────────────────────────▲──────────┘
+              │                            │                               │
+  ┌───────────┴───────────┐   ┌────────────┴────────────────┐   ┌──────────┴───────────┐
+  │  OFFLINE / DATA PLANE  │   │   ONLINE / SERVING PLANE    │   │     EVAL PLANE        │
+  │  "build the knowledge" │   │   "answer a person"         │   │  "prove it works"     │
+  │                        │   │                             │   │                       │
+  │  Kol Zchut MediaWiki   │   │   Telegram user (he / ru)   │   │  golden_he/ru.jsonl   │
+  │        API             │   │          │ long-poll        │   │        │              │
+  │  ingest/ (mediawiki,   │   │   bot/ (telegram_app,       │   │  eval/ (run_ragas,    │
+  │   acquire, clean,      │   │        handlers, session)   │   │   run_judge, report)  │
+  │   chunk, index)        │   │          │                  │   │        │              │
+  │        │  orchestrated │   │   rag/graph.py  ◀── prompts │   │   reuses rag/graph    │
+  │        │  by scripts/  │   │   (LangGraph agent)         │   │   + rag/retriever     │
+  │        ▼  sync.py      │   │   guardrails ▸ retrieve ▸   │   │        │              │
+  │                        │   │   grade ▸ generate ▸ out    │   │        ▼  report      │
+  │   ╔════════════════════╪═══╪═════════════╪═══════════════╪═══╪═══╗  (md / csv)       │
+  │   ║   CHROMA — one multilingual collection (lang-tagged), blue-green ║              │
+  │   ║  retriever reads ACTIVE collection · index builds kz_v{N+1}      ║              │
+  └───╚═════════════════════════════════════════════════════════════════╝──────────────┘
+```
+
+The data and serving planes never touch the same Chroma copy live: `index.py`
+builds a **new** collection, `sync.py` flips the **active pointer** (blue-green),
+`retriever.py` only ever reads whatever is active.
+
+**Module map — responsibility · calls · called by**
+
+_Cross-cutting_
+| Module | Responsibility | Calls | Called by |
+|---|---|---|---|
+| `config.py` | Models, embed dims, **active-collection** name, `ALLOWED_CHAT_IDS`, thresholds | — | everything |
+| `rag/llm.py` | The one Gemini door: `embed()` + `generate()` w/ timeout/retry/fallback, pinned versions | Gemini API | `index`,`retriever`,`graph`,`eval` |
+
+_Offline / data plane_
+| Module | Responsibility | Calls | Called by |
+|---|---|---|---|
+| `ingest/mediawiki.py` | MediaWiki client: manifest, `parse` HTML, `langlinks`; WAF-safe UA + throttle | KZ API | `acquire` |
+| `ingest/acquire.py` | **manifest-diff** (added/changed/deleted); **resumable** fetch → raw layer | `mediawiki` | `sync` |
+| `ingest/clean.py` | HTML → clean text, **tables→Markdown**; corpus format as reference | — | `index` |
+| `ingest/chunk.py` | **Section-based** ~512-tok chunks, title+heading prefix | — | `index` |
+| `ingest/index.py` | clean→chunk→**embed**→upsert `kz_v{N+1}`; delete removed; **blue-green** | `clean`,`chunk`,`llm` | `sync` |
+| `scripts/sync.py` | Entrypoint (cron/launchd): acquire+index, smoke-test, **flip active pointer** | `acquire`,`index`,`config` | cron / manual |
+
+_Online / serving plane_
+| Module | Responsibility | Calls | Called by |
+|---|---|---|---|
+| `bot/telegram_app.py` | Build `python-telegram-bot` app, register handlers, **`run_polling()`** | `handlers` | entrypoint |
+| `bot/handlers.py` | Update ↔ agent; commands; non-text reply; error fallback | `graph`,`session` | `telegram_app` |
+| `bot/session.py` | Per-`chat_id` **in-memory** memory (~5 turns; `/reset`) | — | `handlers` |
+| `rag/graph.py` | **LangGraph agent**: in→router→retrieve→grade→generate→out; checkpointer | `guardrails`,`retriever`,`prompts`,`llm` | `handlers`,`eval` |
+| `rag/retriever.py` | Chroma similarity over **active** collection, `lang` filter, top-8, **similarity floor** | Chroma,`llm` | `graph` |
+| `rag/guardrails.py` | Input (allowlist, rate, lang, injection, PII) + output (citation, language, faithfulness, refuse-if-empty) | `llm` | `graph` |
+| `rag/prompts.py` | System/answer prompts + per-language disclaimers (eval-versioned) | — | `graph` |
+
+_Eval plane_
+| Module | Responsibility | Calls | Called by |
+|---|---|---|---|
+| `eval/run_ragas.py` | RAGAS: faithfulness, relevancy, context precision/recall | `graph`/`retriever`,`llm` | manual |
+| `eval/run_judge.py` | LLM-judge: correctness, **language match**, disclaimer, correct refusal | `graph`,`llm` | manual |
+| `eval/report.py` | Aggregate → markdown + CSV + charts (he vs ru) | — | manual |
+
+**Two flows that matter**
+
+```
+OFFLINE — keep knowledge fresh (sync.py)
+  KZ MediaWiki API ─▶ mediawiki ─▶ acquire (manifest-diff, resumable)
+     ─▶ raw layer data/raw/{lang}/{pageid}.json
+     ─▶ index (clean ▸ chunk ▸ embed) ─▶ Chroma kz_v{N+1} ─▶ smoke ─▶ flip ACTIVE
+
+ONLINE — one user message (rag/graph.py)
+  Telegram msg ─▶ handlers ─▶ [input_guardrails] allowlist·rate·lang·injection·PII
+     ─▶ [router] rewrite ─▶ [retrieve] active, lang filter, top-8
+     ─▶ [grade_docs] keep ≤5 · weak? re-retrieve ×1 · below floor ⇒ refuse
+     ─▶ [generate] grounded answer + citations + disclaimer
+     ─▶ [output_guardrails] citation? language? faithful? else refuse ─▶ reply
+```
+
+**Domain glossary**
+
+- **Kol Zchut / זכותון (zchuton)** — source wiki of Israeli rights guides; one page = one rights topic.
+- **Raw layer** — local per-page snapshot decoupling *fetch* from *index*, so re-indexing never re-crawls.
+- **manifest-diff** — compare each page's `lastrevid` vs last seen → added/changed/deleted; powers first crawl (resume) + incremental sync.
+- **Fast-start corpus → cutover** — official Hebrew corpus (`source='corpus'`) serves Day-1, replaced by `source='pipeline'` once validated.
+- **Blue-green swap** — build `kz_v{N+1}`, atomically flip the active pointer; bot never reads a half-built index.
+- **Single multilingual collection** — one Chroma store, every chunk `lang`-tagged; same-language-first, filter-relax fallback.
+- **Agentic self-correction (topology B)** — `grade_docs` can trigger one bounded re-retrieve; the graded "Agent".
+- **Similarity floor** — best hit too weak ⇒ refuse; doubles as off-topic detection.
+- **Guardrails / Evaluations** — the other two graded modules: live input/output checks; offline RAGAS + LLM-judge over a **golden set**.
+
+### 4.1 Live-path detail (zoomed in)
+
 ```
                  ┌──────────────────────────────────────────────┐
                  │            Telegram user (he / ru)            │
@@ -347,7 +447,7 @@ kolzchut-bot/
     corpus/                 # official paragraph corpus (fast-start)
   src/
     ingest/  mediawiki.py  acquire.py  clean.py  chunk.py  index.py
-    rag/     retriever.py  graph.py  prompts.py  guardrails.py
+    rag/     llm.py  retriever.py  graph.py  prompts.py  guardrails.py
     bot/     telegram_app.py  handlers.py  session.py
     eval/    golden_he.jsonl  golden_ru.jsonl  run_ragas.py  run_judge.py  report.py
   scripts/   sync.py        # acquire + index entrypoint (cron/scheduler)
