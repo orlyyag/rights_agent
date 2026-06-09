@@ -23,3 +23,4 @@ data/qa/
 # Eval run artifacts (results JSONL + run log) — the report.md travels with code
 eval/results_*.jsonl
 eval/run.log
+data/acquire.log

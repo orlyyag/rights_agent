@@ -66,12 +66,83 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 
 | # | Brick | Status | Notes |
 |---|---|---|---|
-| 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | 🚧 In progress (overnight) | Modules + small validation tonight; full HE crawl awaiting user go |
+| 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | ✅ **Modules done + R1 verified** · 🌙 full HE crawl running overnight | See "Brick 1 results" below |
 | 2 | **Russian native index** — same pipeline against `/w/ru/api.php` | Pending | Unblocks bilingual demo (contribution #2) |
 | 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | Pending | The "Agents" graded module |
 | 4 | **Full evals** — RAGAS + LLM-judge + hit@k on the agent path; bilingual report | Partial (HE baseline done) | RU golden set needs human-verified rows from ru-native pages (R8, T16) |
 | 5 | **Update automation** — `scripts/sync.py` (manifest-diff → pipeline → blue-green flip) + scheduled run | Pending | §2 DoD: "change page → re-sync → answer reflects" |
 | 6 | **A2 latency improvement** — offline judge + embedding-based grade; baseline → optimized | Pending | Baseline is **3.50s mean**, target <2s |
+
+---
+
+## Brick 1 results (this overnight session)
+
+**All four ingestion modules implemented + tested** (`531f5be` → `b94a272`):
+
+| Module | LOC | Tests | What it does |
+|---|---|---|---|
+| `ingest/mediawiki.py` | ~150 | 8 | WAF-safe KZ client: descriptive UA, ~1 req/s throttle, `maxlag=5`, exp-backoff retry on 429/503/network. Three ops: `manifest()` (paginated), `parse(pageid)` (HTML), `langlinks(pageid)` (cross-lingual R2). |
+| `ingest/acquire.py` | ~150 | 8 | Manifest-diff (added/changed/deleted) + atomic per-page raw-layer write. Resumable + idempotent — Ctrl-C-safe, partial progress sticks. `acquire(lang, manifest_limit=None)` is the entrypoint; `scripts/acquire.py he` is the CLI. |
+| `ingest/clean.py` | ~170 | 8 | HTML → `CleanedDoc(sections=[Section(heading, level, text)])`. Strips chrome (script/style/.mw-editsection/.navbox/.infobox/.toc/etc.) before any walk. **Tables → markdown** (numbers verbatim) — single-column tables fall back to bullets; pipes inside cells escaped. |
+| `ingest/chunk.py` | ~140 | 8 | Section-based chunking ~512 tok with ~50-tok overlap (Q3). Each chunk prefixed `"PageTitle > Heading"` so the embedding catches topical context. Oversized paragraphs hard-split on sentence boundaries → words; no content silently lost. |
+
+**Total: ~610 LOC + 32 ingestion tests.** Full test suite: **72/72 green**.
+
+### R1 verified on real benefit pages
+
+Tested three known benefit pages (`466 מענק לידה`, `6499 קצבת ילדים`, `1521 דמי אבטלה`). All three had tables and **all tables came through as markdown with every number preserved**:
+
+```
+| עבור לידת הילד הראשון במשפחה | 2,103 ₪ |
+| עבור הילד השני במשפחה         |   946 ₪ |
+| עבור הילד השלישי              |   631 ₪ |
+| עבור לידת תאומים              | 10,514 ₪ |
+| עבור לידת שלישייה             | 15,771 ₪ |
+```
+
+The Webiks corpus said 1,986 ₪ for the first-child grant (May 2024 snapshot — stale).
+The pipeline pulls **2,103 ₪** (current).
+**This is exactly the corpus→pipeline cutover motivation.** Every table-bearing demo question gets sharper numbers after the pipeline replaces the corpus.
+
+### Cross-page sanity check
+
+10 alphabetically-first HE pages walked through the full pipeline cleanly. 7/10 had ≥1-chunk overlap with the corpus for the same `pageid` (the 3 misses are pages created after May 2024 or differ substantially).
+
+| pageid | title | sections | chunks | overlap w/ corpus |
+|---|---|---|---|---|
+| 11330 | "אפיקים בנגב" — שירות לאומי-אזרחי לצעירות מהחברה הבדואית | 8 | 7 | yes |
+| 11351 | "אשר רוח בו" — מכינה קדם צבאית | 4 | 4 | yes |
+| 21929 | "גניבת" לקוחות מהמעסיק | 6 | 5 | (post-May-2024) |
+| 8225  | "גשר לעצמאות" | 12 | 10 | yes |
+| 2119  | "הסכם הקשישים" של בנק לאומי | 4 | 6 | yes |
+| 10311 | "חבר טלפוני" | 1 | 1 | (post-May-2024) |
+| 8531  | "חוזרים לבית הספר" | 1 | 1 | (post-May-2024) |
+| 11791 | "חיבורים" | 7 | 7 | yes |
+| 10737 | "ידידים" | 3 | 3 | yes |
+| 9870  | "יסודות לצמיחה" | 2 | 2 | yes |
+
+### 🌙 Overnight HE crawl
+
+Started a full HE crawl via `scripts/acquire.py he` in the background (pid **87650**, log: `data/acquire.log`). Expected **~2 hours** at 1 req/s for ~7,300 non-redirect content pages. Resumable — even if it crashes mid-way, the next run continues from the manifest.
+
+```bash
+# When you wake — check status:
+pgrep -fl scripts/acquire           # still alive?
+tail -20 data/acquire.log           # progress
+ls data/raw/he | wc -l              # pages on disk
+cat data/manifest/he.json | python3 -c "import sys, json; print(len(json.load(sys.stdin)), 'pages')"
+```
+
+**No embedding cost incurred overnight.** Embed is a separate explicit step once you wake — `python scripts/load_pipeline.py` (or equivalent — I haven't built the embed-driver yet; one-liner using `index.build_collection(chunks)` is enough).
+
+If the crawl is still running when you wake: `tail -f data/acquire.log` to watch. If you want to stop it: `pkill -f 'scripts/acquire.py'`. To resume: re-run the same `python scripts/acquire.py he` command. State is in `data/manifest/he.json` and `data/raw/he/*.json`.
+
+### What's NOT done in brick 1 (intentional handoff)
+
+- **No embedding.** Cost ~$1-3 + decision is yours.
+- **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
+- **No active-pointer flip.** Bot still serves from `kz_corpus_he`. Flipping is a one-liner once `kz_pipeline_he` is built and smoke-tested.
+- **No automated `scripts/sync.py`.** That's brick 5 (update automation).
 
 ---
 
