@@ -88,6 +88,21 @@ def test_build_reply_answers_allowed_and_detects_lang(monkeypatch):
     assert "ответ" in out and "<i>дисклеймер</i>" in out
 
 
+def test_build_reply_rejects_too_long_without_calling_answer(monkeypatch):
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    monkeypatch.setattr(config, "MIN_QUESTION_WORDS", 3)
+    monkeypatch.setattr(config, "MAX_QUESTION_CHARS", 50)
+    called = {"n": 0}
+    def fa(q, l):
+        called["n"] += 1
+        return Answer(text="x", lang=l, citations=[], disclaimer="")
+    rl = guardrails.RateLimiter(per_min=10, now=lambda: 0.0)
+    long_he = "מה מגיע לי " * 20  # > 50 chars, > 3 words
+    out = handlers.build_reply(8, long_he, answer_fn=fa, rate=rl)
+    assert "ארוכה" in out
+    assert called["n"] == 0
+
+
 def test_build_reply_rejects_too_short_without_calling_answer(monkeypatch):
     monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
     monkeypatch.setattr(config, "MIN_QUESTION_WORDS", 3)

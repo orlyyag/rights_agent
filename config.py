@@ -99,6 +99,7 @@ def _parse_ids(raw: str) -> frozenset[int]:
 ALLOWED_CHAT_IDS = _parse_ids(_env("ALLOWED_CHAT_IDS"))  # from @userinfobot
 RATE_LIMIT_PER_MIN = _env_int("KZ_RATE_LIMIT_PER_MIN", 20)
 MIN_QUESTION_WORDS = _env_int("KZ_MIN_QUESTION_WORDS", 3)  # short greetings retrieve noise
+MAX_QUESTION_CHARS = _env_int("KZ_MAX_QUESTION_CHARS", 500)  # ~80–100 words; protects cost, retrieval quality, injection surface
 
 # ── Observability — LangSmith tracing (A8) ──────────────────────────────────
 # Opt-in: set LANGSMITH_API_KEY in .env and every embed/generate call (and Tier-1

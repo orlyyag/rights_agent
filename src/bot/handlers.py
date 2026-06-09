@@ -40,6 +40,10 @@ TOO_SHORT = {
     "he": "על השאלה לכלול שלוש מילים לכל הפחות.",
     "ru": "Вопрос должен содержать не менее трёх слов.",
 }
+TOO_LONG = {
+    "he": "השאלה ארוכה מדי. נסחו אותה בקצרה (עד 500 תווים).",
+    "ru": "Вопрос слишком длинный. Сформулируйте короче (до 500 символов).",
+}
 
 # Caveat shown between body and citations, mirroring the official KZ on-site chat:
 # tells the user the answer is AI-generated and to verify via the source links.
@@ -105,6 +109,8 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
         return _esc(RATE_MSG[lang])
     if guardrails.too_short(text):
         return _esc(TOO_SHORT[lang])
+    if guardrails.too_long(text):
+        return _esc(TOO_LONG[lang])
     return render_answer(answer_fn(text, lang))
 
 

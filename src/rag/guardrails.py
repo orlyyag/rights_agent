@@ -41,6 +41,14 @@ def too_short(text: str, min_words: int | None = None) -> bool:
     return len((text or "").split()) < threshold
 
 
+def too_long(text: str, max_chars: int | None = None) -> bool:
+    """Cap question length at :data:`config.MAX_QUESTION_CHARS`. Long inputs
+    blur the query embedding, balloon LLM cost, and expand the prompt-injection
+    surface — none of which serve a real rights question."""
+    threshold = config.MAX_QUESTION_CHARS if max_chars is None else max_chars
+    return len(text or "") > threshold
+
+
 def redact_pii(text: str) -> str:
     """Heuristic redaction before logging (§0 Grill Q8). Over-redacts by design;
     raw user text is never written to the log. NOTE: bare 10-digit mobiles may slip —

@@ -35,6 +35,15 @@ def test_too_short(monkeypatch):
     assert guardrails.too_short("hello world there", min_words=2) is False
 
 
+def test_too_long(monkeypatch):
+    monkeypatch.setattr(config, "MAX_QUESTION_CHARS", 500)
+    assert guardrails.too_long("a" * 500) is False             # boundary inclusive
+    assert guardrails.too_long("a" * 501) is True
+    assert guardrails.too_long("מה מגיע לי אחרי לידה?") is False
+    assert guardrails.too_long("") is False
+    assert guardrails.too_long("x" * 12, max_chars=10) is True
+
+
 def test_rate_limiter_sliding_window():
     clock = {"t": 0.0}
     rl = guardrails.RateLimiter(per_min=2, now=lambda: clock["t"])
