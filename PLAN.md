@@ -68,6 +68,34 @@ disclaimer on every substantive answer; `grade_docs` scores each candidate (rele
 or 1–5), keep above threshold, refuse if none pass after one re-retrieve; sync = manual
 `sync.py` + one scheduled run (cron/launchd) to *demonstrate* automation, not an always-on daemon.
 
+### Delivery tiers (2026-06-09 — racing a 2–3 day POC, built with Claude Code)
+
+⚠️ **"Optional for the POC" ≠ "optional for the grade."** Tier 1 modules are still
+**required for the final submission** — they're just deferred past the 3-day POC.
+This supersedes the front-loading in §12.
+
+**Tier 0 — POC-core (Days 1–3, MUST work).** Goal: **Hebrew**, grounded, cited answers on Telegram.
+- `config.py` + **`rag/llm.py`** central wrapper (gemini-embedding-001 @3072, Gemini 3 Flash, timeout/retry).
+- **Fast-start only:** load the official **Hebrew corpus** → single Chroma collection (`source='corpus'`). No own pipeline yet.
+- **Linear RAG** (no agent loop): retrieve (lang filter, top-k, **similarity floor**) → generate grounded answer + **citations + disclaimer** → **refuse-if-empty**.
+- **Telegram bot** (`python-telegram-bot`, long-poll): text handler, `/start` `/help`, **`chat_id` allowlist**.
+- A few smoke tests + manual demo.
+- *Explicitly NOT in the POC:* own pipeline, Russian, agent self-correction, evals, sync.
+
+**Tier 1 — POC-deferred (Days 4–6, REQUIRED for the grade).**
+- Own **ingestion pipeline** (mediawiki/acquire/clean/chunk/index) → Hebrew **cutover** (`source='pipeline'`).
+- **Russian** — first v1 add; own pipeline (cross-lingual generation is the cheap first step).
+- **Agentic self-correction** (`grade_docs` → bounded re-retrieve) — upgrades linear RAG to the graded "Agent".
+- **Guardrails depth** — injection patterns, PII-redacted logging, rate cap, language enforcement, output faithfulness.
+- **Evaluations** — RAGAS + LLM-judge + hit@k + report over the golden set.
+- **Update automation** — manifest-diff sync + blue-green swap + one scheduled run.
+- **Memory / follow-ups** (in-memory checkpointer); `/lang` `/reset` `/sources`.
+
+**Tier 2 — Genuinely optional (only if ahead; OK to omit even in the final).**
+- Cloud Run deploy (local long-poll is the demo) · voice→text transcription (graceful "please type" is enough)
+  · translate-in-loop cross-lingual fallback (only if the spike shows weak vector recall)
+  · live-path LLM-call optimization (Issue-11 lever) · corpus chunk reverse-engineering comparison.
+
 ---
 
 ## 1. Project overview
