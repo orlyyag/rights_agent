@@ -83,7 +83,7 @@ def test_build_reply_answers_allowed_and_detects_lang(monkeypatch):
         seen["lang"] = l
         return Answer(text="ответ", lang=l, citations=[], disclaimer="дисклеймер")
     rl = guardrails.RateLimiter(per_min=10, now=lambda: 0.0)
-    out = handlers.build_reply(5, "Какие права?", answer_fn=fake_answer, rate=rl)
+    out = handlers.build_reply(5, "Какие у меня права?", answer_fn=fake_answer, rate=rl)
     assert seen["lang"] == "ru"
     assert "ответ" in out and "<i>дисклеймер</i>" in out
 
@@ -101,7 +101,7 @@ def test_build_reply_rejects_too_short_without_calling_answer(monkeypatch):
     assert called["n"] == 0  # never reached the answer path
     # Russian variant
     out_ru = handlers.build_reply(7, "привет", answer_fn=fa, rate=rl)
-    assert "минимум 3 слова" in out_ru
+    assert "не менее трёх слов" in out_ru
 
 
 def test_build_reply_rate_limited(monkeypatch):
