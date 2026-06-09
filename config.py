@@ -75,6 +75,10 @@ SIMILARITY_FLOOR_BY_LANG = {"he": SIMILARITY_FLOOR, "ru": SIMILARITY_FLOOR}  # s
 GRADE_LOOP_CAP = 1         # bounded self-correction, one extra loop (§0 #11, R4)
 MEMORY_TURNS = 5           # in-memory checkpointer window (Q7)
 REWRITE_HISTORY_TURNS = 3  # turns fed to the condense/rewrite step (R5)
+# Default answer path. "linear" = Tier-0 (cheap, retrieve→generate). "agent" =
+# Tier-1 (rewrite→retrieve→grade→re-retrieve→generate, R4/R5; more LLM calls
+# per turn). Flip via .env once the agent path has been spot-checked live.
+ANSWER_PATH = _env("KZ_ANSWER_PATH", "linear")
 
 # ── Central LLM wrapper behavior (§0 #6) ─────────────────────────────────────
 LLM_TIMEOUT_S = _env_float("KZ_LLM_TIMEOUT_S", 20.0)

@@ -99,7 +99,7 @@ def render_answer(ans: Answer) -> str:
 def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
     """Sync core: allowlist → rate cap → detect language → answer → render.
     Pure and injectable; the async callbacks below are a thin shell over this."""
-    answer_fn = answer_fn or answer_mod.answer
+    answer_fn = answer_fn or answer_mod.answer_default
     limiter = rate if rate is not None else _LIMITER
 
     if not guardrails.is_allowed(chat_id):

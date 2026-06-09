@@ -51,6 +51,27 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None) -> A
                   disclaimer=prompts.disclaimer(lang), refused=False)
 
 
+def answer_agent(question: str, lang: str,
+                 history: list[tuple[str, str]] | None = None) -> Answer:
+    """Tier-1 agent path entrypoint (drop-in for :func:`answer`).
+
+    Delegates to ``rag.graph.run_agent`` — rewrite → retrieve → grade → (re-retrieve
+    ×1) → generate. Imports ``rag.graph`` lazily so tests of the linear path don't
+    need langgraph installed.
+    """
+    from rag import graph  # noqa: PLC0415 — lazy to keep the linear path import-light
+    return graph.run_agent(question, lang, history=history)
+
+
+def answer_default(question: str, lang: str,
+                   history: list[tuple[str, str]] | None = None) -> Answer:
+    """Route by :data:`config.ANSWER_PATH`. The bot calls this; flipping
+    ``KZ_ANSWER_PATH=agent`` in .env switches every Telegram message over."""
+    if (config.ANSWER_PATH or "").lower() == "agent":
+        return answer_agent(question, lang, history=history)
+    return answer(question, lang)
+
+
 def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
     """Up to MAX_CITATIONS unique sources, in retrieval order (R6)."""
     seen: set[str] = set()

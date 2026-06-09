@@ -45,16 +45,24 @@ def _to_chunks(result: dict, lang: str) -> list[RetrievedChunk]:
     return out
 
 
-def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None) -> list[RetrievedChunk]:
+def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None,
+             relax_filter: bool = False) -> list[RetrievedChunk]:
     """Embed the query (asymmetric, Q1) and return up to ``top_k`` lang-filtered chunks
-    above the lenient floor. Pass ``collection`` to inject a fake in tests."""
+    above the lenient floor. Pass ``collection`` to inject a fake in tests.
+
+    ``relax_filter=True`` drops the ``lang`` filter — used by the agent's
+    re-retrieve when grade_docs returns ``cross_lingual_thin`` (R2/R4): retrieve
+    in the other language and let generate translate per its system prompt.
+    """
     top_k = top_k or config.TOP_K
     (qvec,) = llm.embed([query], task_type=config.EMBED_TASK_QUERY)
     col = collection if collection is not None else _get_collection()
-    result = col.query(
-        query_embeddings=[qvec],
-        n_results=top_k,
-        where={"lang": lang},
-        include=["documents", "metadatas", "distances"],
-    )
+    query_kwargs = {
+        "query_embeddings": [qvec],
+        "n_results": top_k,
+        "include": ["documents", "metadatas", "distances"],
+    }
+    if not relax_filter:
+        query_kwargs["where"] = {"lang": lang}
+    result = col.query(**query_kwargs)
     return _to_chunks(result, lang)
