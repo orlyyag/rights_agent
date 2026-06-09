@@ -19,3 +19,7 @@ data/*.pid
 data/active_collection
 data/chroma/
 data/qa/
+
+# Eval run artifacts (results JSONL + run log) — the report.md travels with code
+eval/results_*.jsonl
+eval/run.log
