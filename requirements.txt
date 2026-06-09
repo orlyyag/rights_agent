@@ -1,0 +1,8 @@
+# Pinned loosely for the sprint; tighten before the final.
+google-genai>=0.8
+chromadb>=0.5
+langgraph>=0.2
+python-telegram-bot>=21
+ragas>=0.2
+python-dotenv>=1.0
+pytest>=8.0

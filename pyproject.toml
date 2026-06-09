@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# Root holds config.py + schema.py; packages live under src/.
+pythonpath = [".", "src"]
+addopts = "-q"
+markers = [
+    "integration: real-model / network E2E smoke (deselect with -m 'not integration')",
+]
