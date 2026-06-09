@@ -26,7 +26,10 @@ def build_app():
 def main() -> None:
     if not config.TELEGRAM_BOT_TOKEN:
         raise SystemExit("Set TELEGRAM_BOT_TOKEN in .env (from @BotFather).")
-    build_app().run_polling()
+    # drop_pending_updates clears Telegram's server-side queue from any previous
+    # instance so a fresh start doesn't immediately race with a stale long-poll
+    # claim (the "Conflict: terminated by other getUpdates request" failure).
+    build_app().run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":

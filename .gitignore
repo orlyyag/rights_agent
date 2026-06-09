@@ -12,3 +12,9 @@ chroma/
 .DS_Store
 .gstack/
 .claude/
+
+# Runtime state (bot lifecycle, active pointer)
+data/*.log
+data/*.pid
+data/active_collection
+data/chroma/
