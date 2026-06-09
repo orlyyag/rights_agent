@@ -50,7 +50,7 @@ ACTIVE_POINTER = DATA_DIR / "active_collection"   # one-line file, flipped by sy
 
 # ── Models — pinned, never ``-latest`` (§0 Grill Q1/Q2) ──────────────────────
 GEMINI_API_KEY = _env("GEMINI_API_KEY")
-GEN_MODEL = _env("KZ_GEN_MODEL", "gemini-3-flash")  # ⚠ pin explicit version in prod; 2.0 Flash is EOL
+GEN_MODEL = _env("KZ_GEN_MODEL", "gemini-3.5-flash")  # current GA Flash (verified 2026-06-09); 3.0/3.1 are preview only
 EMBED_MODEL = "gemini-embedding-001"
 EMBED_DIM = 3072                                    # full fidelity (Q1)
 EMBED_TASK_DOCUMENT = "RETRIEVAL_DOCUMENT"          # asymmetric: chunks (Q1)
