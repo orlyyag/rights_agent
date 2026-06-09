@@ -8,6 +8,7 @@ python-telegram-bot installed — PTB is imported only in ``telegram_app``.
 from __future__ import annotations
 
 import html
+import re
 
 import config
 from rag import answer as answer_mod
@@ -15,9 +16,11 @@ from rag import guardrails
 from schema import Answer
 
 WELCOME = (
-    "שלום! אני עוזר/ת זכויות מבוסס 'כל זכות'. שאלו על זכויות והטבות בישראל.\n"
-    "Здравствуйте! Я ассистент по правам на базе «Коль Зхут». "
-    "Спросите о правах и льготах в Израиле."
+    "שלום! אני עוזר/ת זכויות מבוסס 'כל זכות'. שאלו על זכויות והטבות בישראל. "
+    "כדאי לציין פרטים רלוונטיים כמו גיל, מצב משפחתי או מצב תעסוקתי לקבלת תשובה מדויקת יותר.\n"
+    "\n"
+    "Здравствуйте! Я ассистент по правам на базе «Коль Зхут». Спросите о правах и льготах в Израиле. "
+    "Можно указать релевантные детали (возраст, семейное положение, трудоустройство) для более точного ответа."
 )
 PRIVATE = "🔒 זהו דמו פרטי. · Это частный демо-доступ."
 RATE_MSG = {
@@ -34,18 +37,48 @@ ERROR = {
 }
 RESET_OK = "🔄 השיחה אופסה. · Диалог сброшен."
 
+# Caveat shown between body and citations, mirroring the official KZ on-site chat:
+# tells the user the answer is AI-generated and to verify via the source links.
+AI_CAVEAT = {
+    "he": "תשובה מבוססת AI. כדאי לוודא את הפרטים בקישורים שלמטה:",
+    "ru": "Ответ сгенерирован ИИ. Рекомендуем проверить детали по ссылкам ниже:",
+}
+
 _LIMITER = guardrails.RateLimiter()
+_BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
 
 
 def _esc(s: str) -> str:
     return html.escape(s or "")
 
 
+def _md_to_telegram_html(escaped_text: str) -> str:
+    """Convert Gemini's markdown (already HTML-escaped) to Telegram HTML.
+
+    Only the patterns our system prompt asks the model to emit:
+    line-start ``"* "`` → ``"• "`` (bullet character; no HTML semantics);
+    inline ``**text**`` → ``<b>text</b>``. Asterisks aren't HTML-special, so this
+    can safely run *after* :func:`html.escape`.
+    """
+    lines = []
+    for line in escaped_text.split("\n"):
+        if line.startswith("* "):
+            line = "• " + line[2:]
+        lines.append(line)
+    return _BOLD_RE.sub(r"<b>\1</b>", "\n".join(lines))
+
+
 def render_answer(ans: Answer) -> str:
-    """Render an :class:`Answer` to a Telegram HTML message (R6): body, then a
-    citation footer, then the italic disclaimer. A refusal renders as body only."""
-    parts = [_esc(ans.text)]
+    """Render an :class:`Answer` to a Telegram HTML message (R6):
+
+    body → italic AI caveat → citation list → italic legal disclaimer.
+    A refusal (no citations) renders as the body alone; we don't show the
+    "verify via links" caveat when there are no links to verify with.
+    """
+    parts: list[str] = [_md_to_telegram_html(_esc(ans.text))]
     if ans.citations:
+        caveat = AI_CAVEAT.get(ans.lang, AI_CAVEAT["he"])
+        parts.append(f"<i>{_esc(caveat)}</i>")
         parts.append("\n".join(
             f'📄 <a href="{html.escape(c.url, quote=True)}">{_esc(c.title)}</a>'
             for c in ans.citations

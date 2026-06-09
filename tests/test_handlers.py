@@ -26,6 +26,43 @@ def test_render_refusal_is_body_only():
     out = handlers.render_answer(ans)
     assert out == "לא מצאתי"
     assert "<i>" not in out and "📄" not in out
+    assert "תשובה מבוססת AI" not in out  # no caveat when no citations
+
+
+def test_render_converts_markdown_bold_and_bullets():
+    """Gemini emits **bold** + line-start `* ` (per system prompt); we convert to HTML."""
+    ans = Answer(
+        text="**דמי לידה:**\n* שבועות 15\n* שבועות 8\nשורה רגילה",
+        lang="he", citations=[], disclaimer="",
+    )
+    out = handlers.render_answer(ans)
+    assert "<b>דמי לידה:</b>" in out
+    assert "• שבועות 15" in out
+    assert "• שבועות 8" in out
+    assert "שורה רגילה" in out
+    assert "**" not in out                 # no literal asterisks left in the output
+    assert "\n* " not in out                # no bullet asterisks left
+
+
+def test_render_inserts_ai_caveat_between_body_and_citations():
+    ans = Answer(text="גוף תשובה", lang="he",
+                 citations=[Citation(title="A", url="https://a")],
+                 disclaimer="כללי בלבד")
+    out = handlers.render_answer(ans)
+    body_i = out.find("גוף תשובה")
+    caveat_i = out.find("תשובה מבוססת AI")
+    cite_i = out.find("📄")
+    disc_i = out.find("כללי בלבד")
+    assert -1 < body_i < caveat_i < cite_i < disc_i
+    assert "<i>" + handlers._esc(handlers.AI_CAVEAT["he"]) + "</i>" in out
+
+
+def test_render_uses_russian_caveat_when_lang_ru():
+    ans = Answer(text="ответ", lang="ru",
+                 citations=[Citation(title="A", url="https://a")],
+                 disclaimer="дисклеймер")
+    out = handlers.render_answer(ans)
+    assert "Ответ сгенерирован ИИ" in out
 
 
 def test_build_reply_blocks_unallowed(monkeypatch):
