@@ -98,6 +98,7 @@ def _parse_ids(raw: str) -> frozenset[int]:
 
 ALLOWED_CHAT_IDS = _parse_ids(_env("ALLOWED_CHAT_IDS"))  # from @userinfobot
 RATE_LIMIT_PER_MIN = _env_int("KZ_RATE_LIMIT_PER_MIN", 20)
+MIN_QUESTION_WORDS = _env_int("KZ_MIN_QUESTION_WORDS", 3)  # short greetings retrieve noise
 
 # ── Telegram (§9, R6) ────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = _env("TELEGRAM_BOT_TOKEN")

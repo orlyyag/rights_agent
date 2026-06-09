@@ -26,6 +26,15 @@ def test_redact_pii():
     assert "123456789" not in guardrails.redact_pii("123456789")
 
 
+def test_too_short(monkeypatch):
+    monkeypatch.setattr(config, "MIN_QUESTION_WORDS", 3)
+    assert guardrails.too_short("שלום") is True
+    assert guardrails.too_short("מה זה?") is True              # 2 words
+    assert guardrails.too_short("מה מגיע לי") is False         # 3 words
+    assert guardrails.too_short("") is True
+    assert guardrails.too_short("hello world there", min_words=2) is False
+
+
 def test_rate_limiter_sliding_window():
     clock = {"t": 0.0}
     rl = guardrails.RateLimiter(per_min=2, now=lambda: clock["t"])

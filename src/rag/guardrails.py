@@ -33,6 +33,14 @@ def is_allowed(chat_id: int) -> bool:
     return not config.ALLOWED_CHAT_IDS or chat_id in config.ALLOWED_CHAT_IDS
 
 
+def too_short(text: str, min_words: int | None = None) -> bool:
+    """A real question is at least :data:`config.MIN_QUESTION_WORDS` whitespace-
+    separated tokens. Greetings ("שלום", "привет") retrieve noisy unrelated chunks
+    and waste an LLM call, so reject before the answer path."""
+    threshold = config.MIN_QUESTION_WORDS if min_words is None else min_words
+    return len((text or "").split()) < threshold
+
+
 def redact_pii(text: str) -> str:
     """Heuristic redaction before logging (§0 Grill Q8). Over-redacts by design;
     raw user text is never written to the log. NOTE: bare 10-digit mobiles may slip —

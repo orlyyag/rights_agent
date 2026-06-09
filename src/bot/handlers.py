@@ -36,6 +36,10 @@ ERROR = {
     "ru": "Извините, временная ошибка. Попробуйте ещё раз.",
 }
 RESET_OK = "🔄 השיחה אופסה. · Диалог сброшен."
+TOO_SHORT = {
+    "he": "נסחו את השאלה במשפט שלם (לפחות שלוש מילים), למשל: \"מה מגיע לי אחרי לידה?\"",
+    "ru": "Сформулируйте вопрос полным предложением (минимум 3 слова), например: «Какие права у меня после рождения ребёнка?»",
+}
 
 # Caveat shown between body and citations, mirroring the official KZ on-site chat:
 # tells the user the answer is AI-generated and to verify via the source links.
@@ -99,6 +103,8 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
     lang = guardrails.detect_lang(text)
     if not limiter.allow(chat_id):
         return _esc(RATE_MSG[lang])
+    if guardrails.too_short(text):
+        return _esc(TOO_SHORT[lang])
     return render_answer(answer_fn(text, lang))
 
 
