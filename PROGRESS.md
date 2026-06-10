@@ -311,8 +311,8 @@ Tracing the 7 false refusals: **0 were floor cuts.** 5 were **generation over-re
 **The one residual false refusal is in-032** — a genuine *chunking* gap: the sick-day accrual chunk isn't retrievable for "how do I compute sick hours to days?" even at top-15. Documented as a known limit (needs chunking work, not a top-k bump). The 5 justified refusals (in-003/016/026/028/040) are correct — the gold page isn't retrieved at all.
 
 ### Still open
-- **Task 8 — judge calibration:** ~25 human labels → Cohen's κ vs the o4-mini judge (makes the correctness number trustworthy). Needs a human pass.
-- **Task 9 — RAGAS sanity sample:** real `ragas` on ~10 items to cross-check our custom faithfulness/relevancy.
+- **Task 8 — judge calibration:** worksheet generated (`eval/calibration_worksheet.txt`, 25 items); awaiting human labels → write `eval/calibration_he.jsonl` → the report auto-emits Cohen's κ + accuracy vs the o4-mini judge. This is the validation anchor.
+- **Task 9 — RAGAS sanity sample: DROPPED.** Real `ragas` won't install here (no `scikit-network` wheel on Py3.14; conflicts with the released langchain v1 on 3.13). We use custom Hebrew-aware RAGAS-style judges as primary and human calibration as the cross-check. `ragas` commented out of `requirements.txt`.
 - **Agent path** eval parked by choice; **in-032 chunking** is a follow-up.
 
 ---

@@ -3,8 +3,9 @@ google-genai>=0.8
 chromadb>=0.5
 langgraph>=0.2
 python-telegram-bot>=21
-ragas>=0.2
+# ragas>=0.2                 # DROPPED: no scikit-network wheel on Py3.14; conflicts w/ langchain v1 on 3.13.
+                            # We use custom Hebrew-aware RAGAS-style judges (eval/metrics/judges.py) instead.
 langsmith>=0.4              # @traceable observability (A8); opt-in via LANGSMITH_API_KEY
 python-dotenv>=1.0
 pytest>=8.0
-openai>=1.40
+openai>=1.40                # eval judge only (o4-mini, cross-provider); the bot itself never calls OpenAI
