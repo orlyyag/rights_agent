@@ -20,7 +20,7 @@ T = TypeVar("T")
 # traced run. When not installed, this degrades to a transparent no-op so the
 # wrapper, the tests, and production all keep the exact same shape.
 try:
-    from langsmith import traceable  # type: ignore[import-not-found]
+    from langsmith import get_current_run_tree, traceable  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     def traceable(*args, **kwargs):  # type: ignore[no-redef]
         if args and callable(args[0]):
@@ -28,6 +28,42 @@ except ImportError:  # pragma: no cover
         def _deco(fn):
             return fn
         return _deco
+    def get_current_run_tree():  # type: ignore[no-redef]
+        return None
+
+
+def _record_usage(usage_metadata) -> None:
+    """Attach Gemini token counts to the current LangSmith run so the dashboard
+    can compute cost (LangSmith reads ``usage_metadata`` + ``ls_model_name`` to
+    map tokens → dollars). No-op when no tracing context is active."""
+    rt = get_current_run_tree()
+    if rt is None or usage_metadata is None:
+        return
+    try:
+        rt.add_metadata({
+            "usage_metadata": {
+                "input_tokens": int(getattr(usage_metadata, "prompt_token_count", 0) or 0),
+                "output_tokens": int(getattr(usage_metadata, "candidates_token_count", 0) or 0),
+                "total_tokens": int(getattr(usage_metadata, "total_token_count", 0) or 0),
+            },
+        })
+    except Exception:  # noqa: BLE001 — observability must never break a request
+        pass
+
+
+def _set_thread_id(thread_id: str | None) -> None:
+    """Tag the current LangSmith run with a thread_id so all child runs (embed,
+    generate, grade, rewrite, ...) appear under the same conversation/question.
+    Used by the bot (chat_id) and the eval (question id)."""
+    if not thread_id:
+        return
+    rt = get_current_run_tree()
+    if rt is None:
+        return
+    try:
+        rt.add_metadata({"thread_id": str(thread_id)})
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class LLMError(RuntimeError):
@@ -64,7 +100,11 @@ def _with_retry(fn: Callable[[], T], *, what: str) -> T:
     raise LLMError(f"{what} failed after {config.LLM_RETRIES + 1} attempts: {last}") from last
 
 
-@traceable(name="embed", run_type="embedding")
+@traceable(
+    name="embed",
+    run_type="embedding",
+    metadata={"ls_provider": "google", "ls_model_name": "gemini-embedding-001"},
+)
 def embed(texts: Sequence[str], *, task_type: str) -> list[list[float]]:
     """Embed a batch of strings.
 
@@ -87,7 +127,12 @@ def embed(texts: Sequence[str], *, task_type: str) -> list[list[float]]:
     return _with_retry(_call, what="embed")
 
 
-@traceable(name="generate", run_type="llm")
+@traceable(
+    name="generate",
+    run_type="llm",
+    metadata={"ls_provider": "google", "ls_model_name": config.GEN_MODEL,
+              "ls_model_type": "chat"},
+)
 def generate(prompt: str, *, system: str | None = None,
              temperature: float | None = None) -> str:
     """Generate grounded text.
@@ -105,6 +150,7 @@ def generate(prompt: str, *, system: str | None = None,
         )
         resp = _get_client().models.generate_content(
             model=config.GEN_MODEL, contents=prompt, config=cfg)
+        _record_usage(getattr(resp, "usage_metadata", None))
         return (resp.text or "").strip()
 
     return _with_retry(_call, what="generate")

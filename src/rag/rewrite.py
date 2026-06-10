@@ -23,6 +23,7 @@ from typing import Iterable
 
 import config
 from rag import llm
+from rag.llm import traceable
 
 _REWRITE_SYSTEM = (
     "You are a query rewriter for a Hebrew/Russian rights assistant.\n"
@@ -82,6 +83,7 @@ def _format_history(history: Iterable[tuple[str, str]], n: int) -> str:
     return "\n".join(lines)
 
 
+@traceable(name="rewrite_query", run_type="chain")
 def rewrite_query(question: str, history: list[tuple[str, str]] | None = None,
                   *, generate_fn=None) -> RewriteResult:
     """Condense a follow-up into a standalone query. No history → pass-through
@@ -107,6 +109,7 @@ def rewrite_query(question: str, history: list[tuple[str, str]] | None = None,
     )
 
 
+@traceable(name="broaden_terminology", run_type="chain")
 def broaden_terminology(question: str, *, generate_fn=None) -> RewriteResult:
     """Used by the re-retrieve transform when grade_docs returns
     ``narrow_terminology`` (R4). One LLM call → broader query in same language."""

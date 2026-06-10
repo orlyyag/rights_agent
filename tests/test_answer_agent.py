@@ -10,8 +10,8 @@ def test_answer_default_routes_to_linear_by_default(monkeypatch):
     monkeypatch.setattr(config, "ANSWER_PATH", "linear")
     seen = {}
     monkeypatch.setattr(answer_mod, "answer",
-                        lambda q, l: (seen.setdefault("via", "linear"),
-                                      Answer(text="x", lang=l, citations=[], disclaimer=""))[1])
+                        lambda *a, **kw: (seen.setdefault("via", "linear"),
+                                          Answer(text="x", lang="he", citations=[], disclaimer=""))[1])
     monkeypatch.setattr(answer_mod, "answer_agent",
                         lambda *a, **kw: (seen.setdefault("via", "agent"),
                                           Answer(text="y", lang="he", citations=[], disclaimer=""))[1])
@@ -24,8 +24,8 @@ def test_answer_default_routes_to_agent_when_configured(monkeypatch):
     monkeypatch.setattr(config, "ANSWER_PATH", "agent")
     seen = {}
     monkeypatch.setattr(answer_mod, "answer",
-                        lambda q, l: (seen.setdefault("via", "linear"),
-                                      Answer(text="x", lang=l, citations=[], disclaimer=""))[1])
+                        lambda *a, **kw: (seen.setdefault("via", "linear"),
+                                          Answer(text="x", lang="he", citations=[], disclaimer=""))[1])
     monkeypatch.setattr(answer_mod, "answer_agent",
                         lambda *a, **kw: (seen.setdefault("via", "agent"),
                                           Answer(text="y", lang="he", citations=[], disclaimer=""))[1])
@@ -34,18 +34,31 @@ def test_answer_default_routes_to_agent_when_configured(monkeypatch):
     assert seen["via"] == "agent"
 
 
+def test_answer_default_propagates_thread_id(monkeypatch):
+    monkeypatch.setattr(config, "ANSWER_PATH", "linear")
+    captured = {}
+    monkeypatch.setattr(answer_mod, "answer",
+                        lambda *a, **kw: (captured.update(kw),
+                                          Answer(text="x", lang="he", citations=[], disclaimer=""))[1])
+    answer_mod.answer_default("q", "he", thread_id="trace-xyz")
+    assert captured.get("thread_id") == "trace-xyz"
+
+
 def test_answer_agent_delegates_to_graph(monkeypatch):
     captured = {}
 
-    def fake_run_agent(question, lang, history=None):
+    def fake_run_agent(question, lang, history=None, *, thread_id=None):
         captured["question"] = question
         captured["lang"] = lang
         captured["history"] = history
+        captured["thread_id"] = thread_id
         return Answer(text="from agent", lang=lang, citations=[], disclaimer="")
 
     import rag.graph as graph_mod
     monkeypatch.setattr(graph_mod, "run_agent", fake_run_agent)
 
-    out = answer_mod.answer_agent("מה זכאות?", "he", history=[("user", "prev")])
+    out = answer_mod.answer_agent("מה זכאות?", "he", history=[("user", "prev")],
+                                  thread_id="trace-abc")
     assert out.text == "from agent"
-    assert captured == {"question": "מה זכאות?", "lang": "he", "history": [("user", "prev")]}
+    assert captured == {"question": "מה זכאות?", "lang": "he",
+                        "history": [("user", "prev")], "thread_id": "trace-abc"}

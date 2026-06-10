@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import config
 from rag import llm, prompts, retriever
+from rag.llm import _set_thread_id, traceable
 from schema import Answer, Citation, RetrievedChunk
 
 # Prefixes the model emits when it follows the refusal template in prompts._SYSTEM.
@@ -24,8 +25,13 @@ def _is_template_refusal(text: str, lang: str) -> bool:
     return any(head.startswith(p) for p in _REFUSAL_PREFIXES.get(lang, ()))
 
 
-def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None) -> Answer:
-    """Answer one question. ``retrieve_fn``/``generate_fn`` are injectable for tests."""
+@traceable(name="answer:linear", run_type="chain")
+def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None,
+           thread_id: str | None = None) -> Answer:
+    """Answer one question. ``retrieve_fn``/``generate_fn`` are injectable for tests.
+    ``thread_id`` groups this call with its child traces in LangSmith (set by the
+    bot to chat_id, by the eval to the question id)."""
+    _set_thread_id(thread_id)
     retrieve_fn = retrieve_fn or retriever.retrieve
     generate_fn = generate_fn or llm.generate
 
@@ -52,7 +58,8 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None) -> A
 
 
 def answer_agent(question: str, lang: str,
-                 history: list[tuple[str, str]] | None = None) -> Answer:
+                 history: list[tuple[str, str]] | None = None,
+                 *, thread_id: str | None = None) -> Answer:
     """Tier-1 agent path entrypoint (drop-in for :func:`answer`).
 
     Delegates to ``rag.graph.run_agent`` — rewrite → retrieve → grade → (re-retrieve
@@ -60,16 +67,19 @@ def answer_agent(question: str, lang: str,
     need langgraph installed.
     """
     from rag import graph  # noqa: PLC0415 — lazy to keep the linear path import-light
-    return graph.run_agent(question, lang, history=history)
+    return graph.run_agent(question, lang, history=history, thread_id=thread_id)
 
 
 def answer_default(question: str, lang: str,
-                   history: list[tuple[str, str]] | None = None) -> Answer:
+                   history: list[tuple[str, str]] | None = None,
+                   *, thread_id: str | None = None) -> Answer:
     """Route by :data:`config.ANSWER_PATH`. The bot calls this; flipping
-    ``KZ_ANSWER_PATH=agent`` in .env switches every Telegram message over."""
+    ``KZ_ANSWER_PATH=agent`` in .env switches every Telegram message over.
+    ``thread_id`` propagates to LangSmith so we can group all calls in one
+    conversation/eval-question."""
     if (config.ANSWER_PATH or "").lower() == "agent":
-        return answer_agent(question, lang, history=history)
-    return answer(question, lang)
+        return answer_agent(question, lang, history=history, thread_id=thread_id)
+    return answer(question, lang, thread_id=thread_id)
 
 
 def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:

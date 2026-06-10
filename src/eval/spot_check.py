@@ -65,7 +65,7 @@ def _evaluate_one(item: dict, gold_lookup: dict[str, dict]) -> dict:
     gold = gold_lookup[item["id"]]
     q, lang = gold["question"], gold["lang"]
     t0 = time.monotonic()
-    a = answer_mod.answer_agent(q, lang)
+    a = answer_mod.answer_agent(q, lang, thread_id=f"spot_check:{item['id']}")
     latency_s = time.monotonic() - t0
 
     retrieved = _retrieved_ids(q, lang)

@@ -111,7 +111,13 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
         return _esc(TOO_SHORT[lang])
     if guardrails.too_long(text):
         return _esc(TOO_LONG[lang])
-    return render_answer(answer_fn(text, lang))
+    # thread_id = the Telegram chat_id, so a single conversation's traces group
+    # in LangSmith — across linear or agent path, across many messages.
+    try:
+        return render_answer(answer_fn(text, lang, thread_id=f"chat:{chat_id}"))
+    except TypeError:
+        # injected test fakes may not accept kwargs — fall back to positional
+        return render_answer(answer_fn(text, lang))
 
 
 # ── async PTB callbacks (telegram imported lazily in telegram_app) ───────────

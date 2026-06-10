@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import config
 from rag import llm
+from rag.llm import traceable  # share the optional-langsmith decorator
 from schema import ChunkMeta, RetrievedChunk
 
 _client = None
@@ -45,6 +46,7 @@ def _to_chunks(result: dict, lang: str) -> list[RetrievedChunk]:
     return out
 
 
+@traceable(name="retrieve", run_type="retriever")
 def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None,
              relax_filter: bool = False) -> list[RetrievedChunk]:
     """Embed the query (asymmetric, Q1) and return up to ``top_k`` lang-filtered chunks

@@ -46,6 +46,8 @@ def _retrieved_doc_ids(question: str, lang: str) -> list[str]:
 
 
 def _answer_fn(path: str):
+    """Return a callable ``(question, lang, *, thread_id=...)`` that hits the
+    requested answer path. Both entrypoints accept thread_id kwarg uniformly."""
     if path == "agent":
         return answer_mod.answer_agent
     return answer_mod.answer
@@ -55,7 +57,9 @@ def _eval_one(item: dict, answer_fn) -> dict:
     lang = item["lang"]
     q = item["question"]
     t0 = time.monotonic()
-    a = answer_fn(q, lang)
+    # thread_id = the golden item id — lets us filter LangSmith by item ("show
+    # me every call for in-001") and group the agent's multi-node trace.
+    a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
     latency_s = time.monotonic() - t0
 
     base = {

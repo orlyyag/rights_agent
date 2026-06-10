@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 
 from rag import llm
+from rag.llm import traceable
 from schema import RetrievedChunk
 
 # Failure modes the grader can label — drives the re-retrieve transform (R4).
@@ -87,6 +88,7 @@ def _build_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
     return "\n".join(lines)
 
 
+@traceable(name="grade_chunks", run_type="chain")
 def grade_chunks(question: str, chunks: list[RetrievedChunk],
                  *, max_keep: int = 5, generate_fn=None) -> GradeResult:
     """Run one batched grade call. Empty input → trivial result (no chunks kept,

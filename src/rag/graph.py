@@ -191,9 +191,13 @@ def _graph() -> Any:
 
 @traceable(name="agent:run", run_type="chain")
 def run_agent(question: str, lang: str,
-              history: list[tuple[str, str]] | None = None) -> Answer:
+              history: list[tuple[str, str]] | None = None,
+              *, thread_id: str | None = None) -> Answer:
     """Top-level agent entrypoint — drop-in for ``rag.answer.answer`` once the
-    user opts in (see ``rag/answer.answer_agent``)."""
+    user opts in (see ``rag/answer.answer_agent``). ``thread_id`` is attached
+    to the LangSmith trace so all child node runs group together."""
+    from rag.llm import _set_thread_id
+    _set_thread_id(thread_id)
     initial: AgentState = {
         "question": (question or "").strip(),
         "lang": lang,
