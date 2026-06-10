@@ -72,6 +72,10 @@ KEEP_K = 5
 # LENIENT pre-filter ONLY — grade_docs is the authoritative gate (R3). Calibrate per-lang (T12).
 SIMILARITY_FLOOR = _env_float("KZ_SIM_FLOOR", 0.35)
 SIMILARITY_FLOOR_BY_LANG = {"he": SIMILARITY_FLOOR, "ru": SIMILARITY_FLOOR}  # set by T12
+
+# ── Eval judge (OpenAI, cross-provider, EVAL-ONLY — the bot never calls OpenAI) ─
+OPENAI_JUDGE_MODEL = _env("OPENAI_JUDGE_MODEL", "o4-mini")
+OPENAI_JUDGE_REASONING_EFFORT = _env("OPENAI_JUDGE_REASONING_EFFORT", "low")
 GRADE_LOOP_CAP = 1         # bounded self-correction, one extra loop (§0 #11, R4)
 MEMORY_TURNS = 5           # in-memory checkpointer window (Q7)
 REWRITE_HISTORY_TURNS = 3  # turns fed to the condense/rewrite step (R5)
