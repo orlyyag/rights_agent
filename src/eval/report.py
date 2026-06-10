@@ -15,6 +15,12 @@ from pathlib import Path
 
 HIT_K = 5
 
+try:
+    import config
+    _judge_model = config.OPENAI_JUDGE_MODEL
+except Exception:  # noqa: BLE001
+    _judge_model = "OpenAI"
+
 
 def _load(path: Path) -> list[dict]:
     out = []
@@ -110,7 +116,7 @@ def main(path: str = "linear") -> None:
             ("MRR (first gold rank)", f"{mrr_v:.2f}"),
         ]),
         "",
-        "## Answer quality (in-scope answered, judged via OpenAI o4-mini)",
+        f"## Answer quality (in-scope answered, judged via OpenAI {_judge_model})",
         _table([
             ("answer_correctness (no contradiction w/ gold + answers Q)", _meanpct([r.get("answer_correctness") for r in answered])),
             ("answer_relevancy (addresses the question)", _meanpct([r.get("answer_relevancy") for r in answered])),

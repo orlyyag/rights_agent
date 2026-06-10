@@ -6,8 +6,8 @@ import pytest
 from eval import judge_llm
 
 
-def test_judge_generate_parses_json(monkeypatch):
-    class _Msg:  # mimic openai response shape
+def _fake_client(captured):
+    class _Msg:
         content = '{"score": 0.5}'
 
     class _Choice:
@@ -18,9 +18,7 @@ def test_judge_generate_parses_json(monkeypatch):
 
     class _Completions:
         def create(self, **kw):
-            assert kw["model"] == "o4-mini"
-            assert kw["reasoning_effort"] == "low"
-            assert kw["response_format"] == {"type": "json_object"}
+            captured.update(kw)
             return _Resp()
 
     class _Chat:
@@ -29,9 +27,31 @@ def test_judge_generate_parses_json(monkeypatch):
     class _Client:
         chat = _Chat()
 
-    monkeypatch.setattr(judge_llm, "_get_client", lambda: _Client())
+    return _Client()
+
+
+def test_judge_chat_model_uses_temperature(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "OPENAI_JUDGE_MODEL", "gpt-4.1")
+    cap = {}
+    monkeypatch.setattr(judge_llm, "_get_client", lambda: _fake_client(cap))
     out = judge_llm.judge_generate("hi", system="sys")
     assert json.loads(out) == {"score": 0.5}
+    assert cap["model"] == "gpt-4.1"
+    assert cap["temperature"] == 0
+    assert "reasoning_effort" not in cap
+    assert cap["response_format"] == {"type": "json_object"}
+
+
+def test_judge_reasoning_model_uses_effort(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "OPENAI_JUDGE_MODEL", "o4-mini")
+    cap = {}
+    monkeypatch.setattr(judge_llm, "_get_client", lambda: _fake_client(cap))
+    judge_llm.judge_generate("hi", reasoning_effort="medium")
+    assert cap["model"] == "o4-mini"
+    assert cap["reasoning_effort"] == "medium"
+    assert "temperature" not in cap
 
 
 def test_judge_generate_missing_key_raises(monkeypatch):

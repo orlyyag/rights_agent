@@ -9,12 +9,12 @@ Answer path: **linear**. Golden set: 40 in-scope (random sample, seed=42, from `
 | recall@5 (gold-set found) | 80.0% |
 | MRR (first gold rank) | 0.58 |
 
-## Answer quality (in-scope answered, judged via OpenAI o4-mini)
+## Answer quality (in-scope answered, judged via OpenAI gpt-4.1)
 | Metric | Value |
 |---|---|
-| answer_correctness (no contradiction w/ gold + answers Q) | 73.5% (n=34) |
-| answer_relevancy (addresses the question) | 80.6% (n=34) |
-| faithfulness (per-claim vs **retrieved context**) | 100.0% (n=34) |
+| answer_correctness (no contradiction w/ gold + answers Q) | 91.2% (n=34) |
+| answer_relevancy (addresses the question) | 92.4% (n=34) |
+| faithfulness (per-claim vs **retrieved context**) | 99.3% (n=34) |
 | language match (heuristic, Hebrew-script) | 100.0% (34/34) |
 | citation present (heuristic) | 100.0% (34/34) |
 
@@ -39,9 +39,9 @@ Answer path: **linear**. Golden set: 40 in-scope (random sample, seed=42, from `
 | Metric | Value |
 |---|---|
 | labeled n | 34 |
-| judge↔human accuracy | 73.5% |
-| Cohen's κ | 0.17 |
-| confusion (tp/tn/fp/fn) | 23/2/2/7 |
+| judge↔human accuracy | 79.4% |
+| Cohen's κ | -0.11 |
+| confusion (tp/tn/fp/fn) | 27/0/4/3 |
 
 ## Retrieval misses (8 items)
 

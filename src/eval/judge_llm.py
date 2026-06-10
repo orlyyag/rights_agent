@@ -7,6 +7,7 @@ for offline tests), retry/backoff, LangSmith-traceable, JSON-object output.
 from __future__ import annotations
 
 import os
+import re
 import time
 
 import config
@@ -43,22 +44,30 @@ def _get_client():
 
 @traceable(name="judge_generate", run_type="llm",
            metadata={"ls_provider": "openai", "ls_model_name": config.OPENAI_JUDGE_MODEL})
-def judge_generate(prompt: str, *, system: str | None = None, retries: int = 3) -> str:
-    """Return the judge model's JSON text. Retries transient errors with backoff."""
+def judge_generate(prompt: str, *, system: str | None = None, retries: int = 3,
+                   reasoning_effort: str | None = None) -> str:
+    """Return the judge model's JSON text. Retries transient errors with backoff.
+    ``reasoning_effort`` overrides the config default (e.g. "medium" for the
+    nuanced correctness judge, "low" for cheaper checks)."""
     client = _get_client()
+    model = config.OPENAI_JUDGE_MODEL
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+    # Reasoning models (o1/o3/o4-mini …) take reasoning_effort and reject temperature;
+    # chat models (gpt-4.1/gpt-4o …) take temperature and reject reasoning_effort.
+    is_reasoning = bool(re.match(r"^o\d", model))
+    kwargs = {"model": model, "messages": messages,
+              "response_format": {"type": "json_object"}}
+    if is_reasoning:
+        kwargs["reasoning_effort"] = reasoning_effort or config.OPENAI_JUDGE_REASONING_EFFORT
+    else:
+        kwargs["temperature"] = 0
     last = None
     for attempt in range(retries):
         try:
-            resp = client.chat.completions.create(
-                model=config.OPENAI_JUDGE_MODEL,
-                messages=messages,
-                reasoning_effort=config.OPENAI_JUDGE_REASONING_EFFORT,
-                response_format={"type": "json_object"},
-            )
+            resp = client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
         except Exception as exc:  # noqa: BLE001
             last = exc

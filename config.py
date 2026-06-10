@@ -74,8 +74,10 @@ SIMILARITY_FLOOR = _env_float("KZ_SIM_FLOOR", 0.35)
 SIMILARITY_FLOOR_BY_LANG = {"he": SIMILARITY_FLOOR, "ru": SIMILARITY_FLOOR}  # set by T12
 
 # ── Eval judge (OpenAI, cross-provider, EVAL-ONLY — the bot never calls OpenAI) ─
-OPENAI_JUDGE_MODEL = _env("OPENAI_JUDGE_MODEL", "o4-mini")
-OPENAI_JUDGE_REASONING_EFFORT = _env("OPENAI_JUDGE_REASONING_EFFORT", "low")
+# gpt-4.1: calibration (vs source-aware adjudication) showed it tracks human judgment
+# (~91% vs 88% correctness) far better than o4-mini (~56-73%, unstable). See PROGRESS.
+OPENAI_JUDGE_MODEL = _env("OPENAI_JUDGE_MODEL", "gpt-4.1")
+OPENAI_JUDGE_REASONING_EFFORT = _env("OPENAI_JUDGE_REASONING_EFFORT", "low")  # only for o-series
 GRADE_LOOP_CAP = 1         # bounded self-correction, one extra loop (§0 #11, R4)
 MEMORY_TURNS = 5           # in-memory checkpointer window (Q7)
 REWRITE_HISTORY_TURNS = 3  # turns fed to the condense/rewrite step (R5)

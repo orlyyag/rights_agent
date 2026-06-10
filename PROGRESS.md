@@ -310,13 +310,34 @@ Tracing the 7 false refusals: **0 were floor cuts.** 5 were **generation over-re
 
 **The one residual false refusal is in-032** — a genuine *chunking* gap: the sick-day accrual chunk isn't retrievable for "how do I compute sick hours to days?" even at top-15. Documented as a known limit (needs chunking work, not a top-k bump). The 5 justified refusals (in-003/016/026/028/040) are correct — the gold page isn't retrieved at all.
 
-### Judge calibration — done (the validation anchor)
+### 🪖 War story (for the deck): "who judges the judge?"
 
-All 34 answered items were re-adjudicated against the source pages (`eval/calibration_he.jsonl`). Result: the o4-mini judge agrees on **73.5%** but is **systematically conservative** — confusion 23/2/2/7, i.e. **7 false negatives vs 2 false positives**; it under-credits long, detailed-but-correct answers (e.g. in-013/021/037). **So the 73.5% auto-correctness is a lower bound — source-aware adjudication puts true correctness at ~88% (30/34).** Cohen's κ = 0.17, but that is depressed by class imbalance (~4–9 "incorrect" items — the κ-paradox); the raw agreement + one-directional bias are the real signals. Takeaway: the bot is *better* than the automated metric says, and the correctness judge could be loosened (it's too eager to call a thorough answer "incomplete").
+A clean cautionary tale about LLM-as-judge — worth a slide.
+
+1. **We trusted the judge.** Correctness was 73.5% per our `o4-mini` judge. Sounds like a mediocre bot.
+2. **We calibrated the judge against a human.** Re-adjudicated all 34 answered items by hand against the source pages → **88% actually correct**. The judge was *under-counting*: 7 false negatives, confusion 23/2/2/7. It dinged long, correct answers as "incomplete" — and **flipped its own verdict between two identical runs** (in-029, in-037). A judge that disagrees with itself can't be trusted.
+3. **"Maybe the judge is too weak?"** Ran a head-to-head with the *same prompt*: `o4-mini` (even at higher reasoning effort) agreed with the human only **56%**; **`gpt-4.1` agreed 79%** and reproduced the human's count almost exactly (31/34 vs 30/34).
+4. **One-line fix.** Switched `OPENAI_JUDGE_MODEL=gpt-4.1` (eval-only; the bot stays 100% Gemini, cross-provider so no self-preference). Correctness **73.5% → 91.2%**, relevancy **80.6% → 92.4%**, faithfulness held at **99.3%**.
+
+**Lesson:** an LLM-as-judge is itself a model that must be validated. We almost shipped a "73.5%" headline that was really a judge artifact. The cross-provider setup (Gemini answers, GPT-4.1 judges) plus a human calibration anchor is what caught it.
+
+*(κ stays negative/uninformative throughout — the κ-paradox: with ~90% of answers correct, the base rate swamps the statistic. Raw agreement + the aggregate match are the signals that matter here.)*
+
+### Final verified numbers (linear, curated gold, gpt-4.1 judge, post prompt-fix)
+
+| Metric | Value | |
+|---|---|---|
+| hit@5 / recall@5 / MRR | 80% / 80% / 0.58 | retrieval |
+| **answer_correctness** | **91.2%** (n=34) | judge ≈ human (88.2%) |
+| **answer_relevancy** | **92.4%** | |
+| **faithfulness** | **99.3%** | grounded; no fabrication |
+| language / citation | 100% / 100% | heuristics |
+| **adversarial refusal** | **100%** (8/8) | safety |
+| false / justified refusals | 1 / 5 (of 40) | only in-032 (chunking gap) |
 
 ### Still open
-- **Task 9 — RAGAS sanity sample: DROPPED.** Real `ragas` won't install here (no `scikit-network` wheel on Py3.14; conflicts with the released langchain v1 on 3.13). Custom Hebrew-aware RAGAS-style judges are primary; human adjudication is the cross-check. `ragas` commented out of `requirements.txt`.
-- **Agent path** eval parked by choice; **in-032 chunking** is a follow-up; the **correctness judge could be loosened** (calibration shows a conservative bias).
+- **Task 9 — RAGAS sanity sample: DROPPED.** Real `ragas` won't install here (no `scikit-network` wheel on Py3.14; conflicts with the released langchain v1 on 3.13). Custom Hebrew-aware RAGAS-style judges are primary; human adjudication is the validation anchor. `ragas` commented out of `requirements.txt`.
+- **Agent path** eval parked by choice; **in-032 chunking** is a follow-up.
 
 ---
 
