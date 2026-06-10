@@ -1,0 +1,39 @@
+Spot-check on pipeline: 10 cases (same 10 retrieval-miss IDs as before)
+
+[1/10] in-001: איך ומה אני כמעסיקה של עובדת משק בית צריכה לעשות במקרה שהעוב…
+     lin+pipeline: hit=False correct=False (5.41s)
+     agt+pipeline: hit=False correct=False (6.81s)
+[2/10] in-002: מסיימי שירות לאומי שנתיים מה מקבלים הטבות שירשמו לימודים?…
+     lin+pipeline: hit=False correct=False (5.38s)
+     agt+pipeline: hit=False correct=False (5.71s)
+[3/10] in-004: אם אפשר לקבל מזונות תלוים ונכות…
+     lin+pipeline: hit=True correct=False (3.66s)
+     agt+pipeline: hit=True correct=False (5.97s)
+[4/10] in-005: אבא שלי חולה בדימציה אם הןא זכאי לתג נכה או קרוב משפחתו המסי…
+     lin+pipeline: hit=False correct=True (3.27s)
+     agt+pipeline: hit=False correct=False (4.3s)
+[5/10] in-006: לגבי הודעה מוקדמת…
+     lin+pipeline: hit=True correct=False (5.06s)
+     agt+pipeline: hit=True correct=False (6.89s)
+[6/10] in-009: האם אני רשאי לוותר על הודעה מוקדמת של העובד…
+     lin+pipeline: hit=True correct=True (4.74s)
+     agt+pipeline: hit=True correct=True (6.62s)
+[7/10] in-016: חיילים צריכים להזמין תור להוציא דרכון?…
+     lin+pipeline: hit=False correct=False (1.46s)
+     agt+pipeline: hit=False correct=False (3.48s)
+[8/10] in-019: למי מגישים בקשה להיות משפחת אומנה?…
+     lin+pipeline: hit=True correct=True (3.44s)
+     agt+pipeline: hit=True correct=True (5.47s)
+[9/10] in-022: האם אני יכולה לבטל עסקה טלפונית באשראי אני בת 76…
+     lin+pipeline: hit=False correct=False (5.86s)
+     agt+pipeline: hit=False correct=False (5.34s)
+[10/10] in-028: איך אפשר לודע אם יש למתוך רישיון…
+     lin+pipeline: hit=False correct=False (1.4s)
+     agt+pipeline: hit=False correct=False (7.16s)
+
+============================================================
+2×2 matrix on the same 10 linear-failure cases:
+  linear + corpus    hit@5: 0/10 correct: 0/10  (baseline)
+  agent  + corpus    hit@5: 0/10 correct: 2/10
+  linear + pipeline  hit@5: 4/10 correct: 3/10
+  agent  + pipeline  hit@5: 4/10 correct: 2/10

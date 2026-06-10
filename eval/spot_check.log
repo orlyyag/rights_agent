@@ -1,0 +1,21 @@
+Spot-checking 10 linear failures on the AGENT path:
+
+  [ 1/10] in-001     hit:False→False        correct:False→False        (10.33s)
+  [ 2/10] in-002     hit:False→False        correct:False→False        (7.62s)
+  [ 3/10] in-004     hit:False→False        correct:False→False        (7.25s)
+  [ 4/10] in-005     hit:False→False        correct:False→False        (4.82s)
+  [ 5/10] in-006     hit:False→False        correct:False→False        (6.95s)
+  [ 6/10] in-009     hit:False→False        correct:True→True          (6.15s)
+  [ 7/10] in-016     hit:False→False        correct:False→False        (9.02s)
+  [ 8/10] in-019     hit:False→False        correct:True→True          (5.71s)
+  [ 9/10] in-022     hit:False→False        correct:False→False        (7.01s)
+  [10/10] in-028     hit:False→False        correct:False→False        (7.44s)
+
+============================================================
+Summary over 10 cases:
+  hit@5 recovered: 0/10 (linear-miss → agent-hit)
+  correctness recovered: 0/8 (linear-wrong → agent-correct)
+  regressions: 0 (linear-correct → agent-wrong)
+  mean agent latency: 7.2s
+
+Results JSONL: eval/spot_check_agent.jsonl

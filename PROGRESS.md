@@ -66,9 +66,9 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 
 | # | Brick | Status | Notes |
 |---|---|---|---|
-| 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | ✅ **Modules done + R1 verified** · 🌙 full HE crawl running overnight | See "Brick 1 results" below |
+| 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | ✅ **Done · cutover complete** (pointer flipped to `kz_pipeline_he`, 64,532 vectors) | See "Brick 1 results" + "Spot-check 2×2" below |
 | 2 | **Russian native index** — same pipeline against `/w/ru/api.php` | Pending | Unblocks bilingual demo (contribution #2) |
-| 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | ✅ **Modules done · opt-in via `KZ_ANSWER_PATH=agent`** | See "Brick 3 results" below — bot stays on linear path until you flip |
+| 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | ✅ **Modules done · opt-in via `KZ_ANSWER_PATH=agent`** · ⚠️ spot-check shows no clear win on pipeline; keep linear default | See "Brick 3 results" + "Spot-check 2×2" below |
 | 4 | **Full evals** — RAGAS + LLM-judge + hit@k on the agent path; bilingual report | Partial (HE baseline done) | RU golden set needs human-verified rows from ru-native pages (R8, T16) |
 | 5 | **Update automation** — `scripts/sync.py` (manifest-diff → pipeline → blue-green flip) + scheduled run | Pending | §2 DoD: "change page → re-sync → answer reflects" |
 | 6 | **A2 latency improvement** — offline judge + embedding-based grade; baseline → optimized | Pending | Baseline is **3.50s mean**, target <2s |
@@ -205,6 +205,42 @@ So worst case is **~4 calls per turn** vs Tier-0's **1 call**. With Gemini 3.5 F
 - **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
 - **No active-pointer flip.** Bot still serves from `kz_corpus_he`. Flipping is a one-liner once `kz_pipeline_he` is built and smoke-tested.
 - **No automated `scripts/sync.py`.** That's brick 5 (update automation).
+
+---
+
+## Spot-check 2×2 — pipeline cutover + agent loop (this morning)
+
+Sample of 10 in-scope questions where **linear + corpus failed retrieval** (the most informative cases for testing brick 1 + brick 3). All four cells scored on the same 10 cases:
+
+| | hit@5 | correct | mean latency |
+|---|---|---|---|
+| **linear + corpus** (baseline) | 0/10 | 0/10 | 3.6s (from baseline run) |
+| **agent + corpus** | 0/10 | 2/10 | 7.2s |
+| **linear + pipeline** | **4/10** | **3/10** | ~3s |
+| **agent + pipeline** | 4/10 | 2/10 | ~5s |
+
+### Conclusions
+
+1. **Brick 1 (pipeline cutover) is the headline win.** Recovered **40% of retrieval misses** and **30% of correctness misses** on cases the corpus couldn't handle. This is the R1 + chunking + freshness hypothesis paying off in real numbers.
+2. **Brick 3 (agent loop) gives a modest correctness lift on the corpus** (0→2/10) but doesn't compound on the pipeline — likely because R4's terminology-broaden runs on the *same* collection and can't fix "the answer isn't there." Agent helped most where the grader kept smarter context, not where retrieval was lacking.
+3. **Agent latency on pipeline is workable** (~3-7s/question), much better than the 44.9s outlier from the initial sanity test (TPM contention with the running embed was the cause).
+4. **Bot serves `linear + pipeline` by default** — that's the best-evidenced quality and the cheapest per-message. `KZ_ANSWER_PATH=agent` stays opt-in for future investigation (cross-lingual, follow-ups, where the agent has more room to help).
+
+### Where the agent will likely *actually* matter (untested today)
+
+- **Follow-up questions** (R5) — our golden set is single-turn, so the rewrite node never fires. A two-turn case like *"מה מגיע לי אחרי לידה?"* → *"ולעצמאים?"* would force the rewrite to condense, which the linear path can't do.
+- **Cross-lingual** (R2) — none of our 10 cases were Russian-thin; the filter-relax path didn't get exercised.
+- **Adversarial precision** — the agent's `grade_docs` returning `wrong_topic` is a different refusal mechanism than the linear path's template; the eval's adversarial set was already 7/8 on linear so there's little room to show improvement.
+
+These are the right brick-3 evals to build for REPORT.md §4 in the coming days (T13).
+
+---
+
+## Cost spent this morning
+
+- Pipeline embed (64,532 chunks × ~250 tok @ $0.15/1M): **~$2.40**
+- 4 spot-check runs (2 cells × 10 questions × ~4 LLM calls + 2 judge calls): **~$0.05**
+- **Total morning: ~$2.45**
 
 ---
 
