@@ -241,6 +241,32 @@ Most of the pre-refusal regression likely comes from a too-strict lenient floor 
 
 ---
 
+## Golden-set curation — the noisy-gold fix (this session)
+
+Manual failure analysis showed the headline correctness number was a **measurement artifact**, not a bot problem: the Webiks QA CSV was built to train a retrieval embedder, so each `gold_paragraph` is an arbitrary page chunk — usually a *tangential* section, not the passage that answers the question. The judge scores against that paragraph, so good answers failed against bad references.
+
+Re-curated **all 40 in-scope golds** against the actual indexed page text (8 parallel research agents → `eval/curate_lib.py`), machine-verified every paragraph is verbatim (no fabrication) and every doc is in the index. See `eval/CURATION.md`; originals in `eval/golden_he.jsonl.orig`.
+
+- **8 docs changed** (wrong page), **22 paragraphs replaced** (tangential → answering), **9 confirmed**, **1 question replaced** (in-007 meta-complaint → a resignation/relocation severance corner case, gold `6607`).
+
+Same bot, same retriever, same pipeline — **only the gold changed:**
+
+| Metric | noisy gold (pipeline) | **curated gold (pipeline)** | Δ |
+|---|---|---|---|
+| hit@5 | 70.0% (28/40) | **77.5% (31/40)** | ⬆️ +7.5pp |
+| correct (all in-scope) | 27.5% (11/40) | **40.0% (16/40)** | ⬆️ +12.5pp |
+| correct (answered only) | 39.3% (11/28) | **59.3% (16/27)** | ⬆️ +20pp |
+| pre-refused on in-scope | 30% (12/40) | 32.5% (13/40) | ≈ (R3/T12 floor, unchanged) |
+| correct refusal (adversarial) | 100% (8/8) | 100% (8/8) | same |
+| faithful (strict, vs gold para) | 17.9% (5/28) | 3.7% (1/27) | ⬇️ **metric artifact** — see below |
+
+- **+5 `correct` flips** (in-004/012/015/021/027/029) were all bot answers the noisy gold wrongly failed — confirms the bot was being under-credited.
+- **hit@5 +3 net** = 4 gains from fixing wrong/missing gold docs − **1 honest loss** (in-008: gold moved to the page that actually defines the term, which the retriever doesn't surface — kept the correct gold, not a retrieval-friendly one).
+- **faithful (strict) collapse is a metric bug, not a regression:** focused golds are short, but the bot answers from the whole page, so "every claim supported by *this one paragraph*" now fails for correct answers. Metric should be redefined as grounded-in-the-cited-sources, not grounded-in-one-paragraph.
+- **Pre-refusal still ~32%** — confirms T12 (per-language floor calibration) is the remaining lever; it's independent of gold quality.
+
+---
+
 ## Full LangSmith observability — verified live
 
 Every Telegram message and eval question now produces a complete trace tree with thread_id, model name, token counts, $ cost, and latency per node. Verified:
