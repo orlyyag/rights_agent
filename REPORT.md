@@ -124,13 +124,13 @@ Golden set: 40 in-scope real user questions (held out from the Webiks KolZchut Q
 |---|---|---|
 | Retrieval hit@5 / recall@5 / MRR | **80%** (32/40) / 80% / 0.58 | gold-doc-set aware |
 | **Faithfulness** (per-claim vs retrieved context) | **100%** (34/34) | answers grounded in sources; no fabrication |
-| **Answer-correctness** (no contradiction w/ gold + answers Q) | **73.5%** (n=34) | cross-provider o4-mini judge |
+| **Answer-correctness** (no contradiction w/ gold + answers Q) | **73.5%** o4-mini · **88.2%** human-adjudicated (n=34) | judge is a conservative lower bound — see calibration |
 | Answer-relevancy (addresses the question) | 80.6% (n=34) | |
 | Language match / citation present | 100% / 100% | deterministic heuristics |
 | Correct refusal (adversarial) | **100%** (8/8) | off-topic + prompt-injection all refused |
 | False refusals (gold retrieved, bot refused) | **2.5%** (1/40) | down from 7/40; residual is one chunking gap (in-032) |
 
-*Judge validation:* metric numbers from an LLM judge are validated against **~25 human labels** (Cohen's κ + accuracy), reported in the eval output's calibration block. *Note on RAGAS:* the plan called for a real-RAGAS cross-check, but RAGAS is not installable on this environment (Python 3.14 has no `scikit-network` wheel; on 3.13 RAGAS conflicts with the released langchain v1). We therefore use **custom, Hebrew-aware RAGAS-style judges** as the primary metrics and human calibration as the validation anchor.
+*Judge calibration (validation anchor).* All 34 answered items were independently re-adjudicated against the source pages (Cohen's κ + accuracy in the eval's calibration block). The o4-mini judge agrees with the adjudication on **73.5%** of items but is **systematically conservative** — 7 false negatives vs 2 false positives (it under-credits long, detailed-but-correct answers). So **the 73.5% auto-correctness is a lower bound; source-aware adjudication puts true correctness at ~88%.** Cohen's κ is 0.17, but that is depressed by class imbalance (only ~4–9 "incorrect" items — the κ-paradox); the raw agreement and the one-directional bias are the interpretable signals. *Note on RAGAS:* the plan called for a real-RAGAS cross-check, but RAGAS is not installable here (Python 3.14 has no `scikit-network` wheel; on 3.13 RAGAS conflicts with the released langchain v1), so we use **custom, Hebrew-aware RAGAS-style judges** as the primary metrics and the human adjudication as the anchor.
 
 **System Performance — Business KPIs** (hybrid framing; estimates OK, **label them**)
 

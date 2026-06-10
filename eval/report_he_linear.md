@@ -35,6 +35,14 @@ Answer path: **linear**. Golden set: 40 in-scope (random sample, seed=42, from `
 |---|---|
 | eval errors | 0 |
 
+## Judge calibration (answer_correctness vs human)
+| Metric | Value |
+|---|---|
+| labeled n | 34 |
+| judge↔human accuracy | 73.5% |
+| Cohen's κ | 0.17 |
+| confusion (tp/tn/fp/fn) | 23/2/2/7 |
+
 ## Retrieval misses (8 items)
 
 Gold `doc_id` not in top-K — these point at chunking/embedding issues.

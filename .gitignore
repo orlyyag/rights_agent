@@ -31,3 +31,4 @@ data/build_pipeline.log
 # curate_lib.py, rerun_one.py, curate_out/ and golden_he.jsonl.orig are kept.
 data/curate_text_he.jsonl
 eval/curate_triage.txt
+eval/calibration_worksheet.txt

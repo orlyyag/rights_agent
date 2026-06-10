@@ -310,10 +310,13 @@ Tracing the 7 false refusals: **0 were floor cuts.** 5 were **generation over-re
 
 **The one residual false refusal is in-032** — a genuine *chunking* gap: the sick-day accrual chunk isn't retrievable for "how do I compute sick hours to days?" even at top-15. Documented as a known limit (needs chunking work, not a top-k bump). The 5 justified refusals (in-003/016/026/028/040) are correct — the gold page isn't retrieved at all.
 
+### Judge calibration — done (the validation anchor)
+
+All 34 answered items were re-adjudicated against the source pages (`eval/calibration_he.jsonl`). Result: the o4-mini judge agrees on **73.5%** but is **systematically conservative** — confusion 23/2/2/7, i.e. **7 false negatives vs 2 false positives**; it under-credits long, detailed-but-correct answers (e.g. in-013/021/037). **So the 73.5% auto-correctness is a lower bound — source-aware adjudication puts true correctness at ~88% (30/34).** Cohen's κ = 0.17, but that is depressed by class imbalance (~4–9 "incorrect" items — the κ-paradox); the raw agreement + one-directional bias are the real signals. Takeaway: the bot is *better* than the automated metric says, and the correctness judge could be loosened (it's too eager to call a thorough answer "incomplete").
+
 ### Still open
-- **Task 8 — judge calibration:** worksheet generated (`eval/calibration_worksheet.txt`, 25 items); awaiting human labels → write `eval/calibration_he.jsonl` → the report auto-emits Cohen's κ + accuracy vs the o4-mini judge. This is the validation anchor.
-- **Task 9 — RAGAS sanity sample: DROPPED.** Real `ragas` won't install here (no `scikit-network` wheel on Py3.14; conflicts with the released langchain v1 on 3.13). We use custom Hebrew-aware RAGAS-style judges as primary and human calibration as the cross-check. `ragas` commented out of `requirements.txt`.
-- **Agent path** eval parked by choice; **in-032 chunking** is a follow-up.
+- **Task 9 — RAGAS sanity sample: DROPPED.** Real `ragas` won't install here (no `scikit-network` wheel on Py3.14; conflicts with the released langchain v1 on 3.13). Custom Hebrew-aware RAGAS-style judges are primary; human adjudication is the cross-check. `ragas` commented out of `requirements.txt`.
+- **Agent path** eval parked by choice; **in-032 chunking** is a follow-up; the **correctness judge could be loosened** (calibration shows a conservative bias).
 
 ---
 
