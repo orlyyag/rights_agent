@@ -19,6 +19,12 @@ from eval.metrics.heuristics import (  # noqa: F401
     language_match,
     refusal_kind,
 )
+from eval.metrics.judges import (  # noqa: F401
+    faithfulness,
+    answer_relevancy,
+    answer_correctness,
+    refusal_correctness,
+)
 from eval.metrics._legacy import (  # noqa: F401  back-compat (Gemini judge)
     judge_in_scope,
     judge_refusal,

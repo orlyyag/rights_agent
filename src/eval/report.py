@@ -47,6 +47,18 @@ def _table(rows: list[tuple[str, str]]) -> str:
     return "| Metric | Value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows)
 
 
+def _mean(values) -> float:
+    vals = [v for v in values if v is not None]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def _meanpct(values) -> str:
+    vals = [v for v in values if v is not None]
+    if not vals:
+        return "n/a"
+    return f"{100 * _mean(vals):.1f}% (n={len(vals)})"
+
+
 def main(path: str = "linear") -> None:
     results_path = Path("eval") / f"results_he_{path}.jsonl"
     report_path = Path("eval") / f"report_he_{path}.md"
@@ -57,21 +69,27 @@ def main(path: str = "linear") -> None:
 
     n_inscope, n_adv = len(in_scope), len(adv)
 
-    # Retrieval
+    # Retrieval (heuristic)
     hits = sum(1 for r in in_scope if r.get(f"hit@{HIT_K}"))
+    recall = _mean([r.get("recall_at_k") for r in in_scope])
+    mrr_v = _mean([r.get("mrr") for r in in_scope])
 
     # Answer quality (only on in-scope items where the bot didn't pre-refuse)
     answered = [r for r in in_scope if not r.get("answer_refused")]
-    correct = sum(1 for r in answered if r.get("correct"))
-    faithful = sum(1 for r in answered if r.get("faithful"))
+    correct = sum(1 for r in answered if r.get("correct"))          # bool (corr ≥ 0.5)
+    faithful = _mean([r.get("faithful") for r in answered])         # float: per-claim vs context
+    relevancy = _mean([r.get("answer_relevancy") for r in answered])
+    correctness = _mean([r.get("answer_correctness") for r in answered])
     lang_ok = sum(1 for r in answered if r.get("language_match"))
-    # Structural fact (citations attach to the Answer object, rendered by render_answer);
-    # the LLM-judge sees only body text and was reporting 0% — false negative. The structural
-    # count is the ground truth.
     cited = sum(1 for r in answered if (r.get("answer_n_citations") or 0) > 0)
     refused_in_scope = sum(1 for r in in_scope if r.get("answer_refused"))
 
-    # Refusals
+    # Refusal split (heuristic): false (gold WAS retrieved → bug) vs justified
+    kinds = Counter(r.get("refusal_kind") for r in in_scope)
+    false_ref = kinds.get("false_refusal", 0)
+    justified_ref = kinds.get("justified_refusal", 0)
+
+    # Refusals (adversarial)
     refused_correctly = sum(1 for r in adv if r.get("refused_correctly"))
 
     # Latency
@@ -85,22 +103,28 @@ def main(path: str = "linear") -> None:
         f"sample, seed=42, from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv` "
         f"after cleaning) + {n_adv} hand-written adversarial.",
         "",
-        "## Retrieval",
+        "## Retrieval (heuristic)",
         _table([
             (f"hit@{HIT_K} (gold `doc_id` in top-{HIT_K})", _pct(hits, n_inscope)),
+            (f"recall@{HIT_K} (gold-set found)", f"{100 * recall:.1f}%"),
+            ("MRR (first gold rank)", f"{mrr_v:.2f}"),
         ]),
         "",
-        "## Answer quality (in-scope, judged via Gemini)",
+        "## Answer quality (in-scope answered, judged via OpenAI o4-mini)",
         _table([
-            ("correct (matches reference paragraph)", _pct(correct, len(answered))),
-            ("faithful (every claim supported by gold paragraph — strict)", _pct(faithful, len(answered))),
-            ("language match (answer in Hebrew)", _pct(lang_ok, len(answered))),
-            ("citation present", _pct(cited, len(answered))),
-            ("in-scope items the bot pre-refused (likely false negative)", _pct(refused_in_scope, n_inscope)),
+            ("answer_correctness (no contradiction w/ gold + answers Q)", _meanpct([r.get("answer_correctness") for r in answered])),
+            ("answer_relevancy (addresses the question)", _meanpct([r.get("answer_relevancy") for r in answered])),
+            ("faithfulness (per-claim vs **retrieved context**)", _meanpct([r.get("faithful") for r in answered])),
+            ("language match (heuristic, Hebrew-script)", _pct(lang_ok, len(answered))),
+            ("citation present (heuristic)", _pct(cited, len(answered))),
         ]),
         "",
-        "## Refusals (adversarial / off-topic)",
-        _table([("correct refusal", _pct(refused_correctly, n_adv))]),
+        "## Refusals",
+        _table([
+            ("correct refusal (adversarial)", _pct(refused_correctly, n_adv)),
+            ("false refusals (gold WAS retrieved → R3/T12 bug)", _pct(false_ref, n_inscope)),
+            ("justified refusals (no gold retrieved)", _pct(justified_ref, n_inscope)),
+        ]),
         "",
         "## Latency (end-to-end per question, baseline for A2)",
         _table([("p50/p95/max", _stats(latencies))]),
@@ -109,6 +133,30 @@ def main(path: str = "linear") -> None:
         _table([("eval errors", str(len(errors)))]),
         "",
     ]
+
+    # Judge calibration vs human labels (if present)
+    cal_path = Path("eval") / "calibration_he.jsonl"
+    if cal_path.exists():
+        from eval.metrics import calibration as cal
+        human = {}
+        for ln in cal_path.open(encoding="utf-8"):
+            if ln.strip():
+                o = json.loads(ln)
+                human[o["id"]] = int(o["human_correct"])
+        judge = {r["id"]: r.get("answer_correctness")
+                 for r in in_scope if r.get("answer_correctness") is not None}
+        rep = cal.calibration_report(human, judge)
+        c = rep["confusion"]
+        md += [
+            "## Judge calibration (answer_correctness vs human)",
+            _table([
+                ("labeled n", str(rep["n"])),
+                ("judge↔human accuracy", f"{100 * rep['accuracy']:.1f}%"),
+                ("Cohen's κ", f"{rep['kappa']:.2f}"),
+                ("confusion (tp/tn/fp/fn)", f"{c['tp']}/{c['tn']}/{c['fp']}/{c['fn']}"),
+            ]),
+            "",
+        ]
 
     # Worst-N for triage
     misses = [r for r in in_scope if not r.get(f"hit@{HIT_K}")]
