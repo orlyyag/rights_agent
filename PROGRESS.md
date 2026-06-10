@@ -263,7 +263,57 @@ Same bot, same retriever, same pipeline — **only the gold changed:**
 - **+5 `correct` flips** (in-004/012/015/021/027/029) were all bot answers the noisy gold wrongly failed — confirms the bot was being under-credited.
 - **hit@5 +3 net** = 4 gains from fixing wrong/missing gold docs − **1 honest loss** (in-008: gold moved to the page that actually defines the term, which the retriever doesn't surface — kept the correct gold, not a retrieval-friendly one).
 - **faithful (strict) collapse is a metric bug, not a regression:** focused golds are short, but the bot answers from the whole page, so "every claim supported by *this one paragraph*" now fails for correct answers. Metric should be redefined as grounded-in-the-cited-sources, not grounded-in-one-paragraph.
-- **Pre-refusal still ~32%** — confirms T12 (per-language floor calibration) is the remaining lever; it's independent of gold quality.
+- **Pre-refusal still ~32%** — flagged T12 (floor calibration) as the next lever. *(The metrics-redesign session below disproved that — see "T12 disproved".)*
+
+---
+
+## Eval metrics redesign + over-refusal fix (this session)
+
+Rebuilt the eval metrics from scratch (spec + plan in `docs/superpowers/specs|plans/2026-06-10-eval-metrics-*`), then used the new measurement to find and fix the real refusal bug. ~20 commits on branch `eval/metrics-and-floor-calibration`, full suite green (125 tests).
+
+### 1. Metric harness — heuristics vs cross-provider judge
+
+The old eval was one Gemini call grading against a single `gold_paragraph`; it mis-assigned every metric. Reassigned by mechanism:
+
+- **Heuristics** (`src/eval/metrics/heuristics.py`, pure, no LLM): hit@5, recall@5, MRR (over a gold-doc *set*), citation present/valid, language (Hebrew-script ratio), and the **false-vs-justified refusal split**. Citation + language used to be *LLM-judged* — now free and deterministic.
+- **Judges** (`src/eval/metrics/judges.py`, RAGAS-shaped, Hebrew prompts) on a **cross-provider OpenAI `o4-mini`** judge (`src/eval/judge_llm.py`, eval-only — the bot stays 100% Gemini, so the judge has no self-preference): per-claim **faithfulness vs the retrieved context**, `answer_relevancy`, `answer_correctness`.
+- **`run_eval` now captures the retrieved context** (chunk text), not just doc_ids — required to judge faithfulness against what the generator actually saw.
+
+Two judge bugs were caught by **live testing, not the plan** (the bot never regressed — the judges were wrong): `answer_correctness` was unstable and re-created the old artifact (docking points for correct detail beyond the narrow gold) → reformulated as a boolean *contradiction* check; the refusal judge misread textbook refusals → clarified that an off-topic-but-answerable refusal is correct. This is exactly why calibration (next) matters.
+
+**The headline fix:** `faithfulness` went from a meaningless **3.7% → ~100%** once judged per-claim against the retrieved context instead of the narrow gold paragraph.
+
+### 2. T12 disproved — the floor was a red herring
+
+`scripts/calibrate_floor.py` swept the cosine floor and **disproved the long-standing hypothesis**:
+
+- All 40 in-scope gold chunks score **0.67–0.84** — far above the 0.35 floor (it cuts *nothing*).
+- Adversarial top-1 scores **0.60–0.70** — they *overlap* in-scope, so cosine **cannot** separate them. Refusal safety comes from generation-time semantics, not a threshold.
+
+Tracing the 7 false refusals: **0 were floor cuts.** 5 were **generation over-refusal** (the answer *was* in the retrieved context, but Gemini refused unless it appeared verbatim) and 2 were chunk-level retrieval gaps. So the fix was a prompt change, not a floor change. `SIMILARITY_FLOOR_BY_LANG` left at 0.35.
+
+### 3. The real fix — relax the generation refusal, guard advice
+
+[prompts.py](src/rag/prompts.py) `_SYSTEM`: now permits **applying stated rules/definitions to the user's case** (not just verbatim echo), and refuses only when sources are genuinely off-topic. A spot-check caught the relaxed prompt starting to *answer* adv-007 ("should I marry?"), so an explicit **personal-advice/opinion guard** was added — subjective questions still refuse even when related legal sources exist.
+
+### Results — same bot+retriever, before vs after the prompt fix (linear, curated gold, o4-mini judge)
+
+| Metric | strict prompt | **relaxed + guard** | Δ |
+|---|---|---|---|
+| in-scope answered | 28 | **34** | +6 recovered |
+| **false refusals** (gold retrieved, bot refused) | 7/40 | **1/40** | −6 ✅ |
+| **faithfulness** (per-claim vs context) | 99.6% | **100.0%** (34/34) | no hallucination from the relax |
+| answer_correctness | 71.4% | **73.5%** (34) | held, +6 harder items |
+| answer_relevancy | 86.8% | 80.6% | slight dip (more answered) |
+| **adversarial refusal** | 100% (8/8) | **100% (8/8)** | safety preserved (advice guard) |
+| hit@5 / recall@5 / MRR | 80% / 80% / 0.58 | 80% / 80% / 0.58 | unchanged (retrieval untouched) |
+
+**The one residual false refusal is in-032** — a genuine *chunking* gap: the sick-day accrual chunk isn't retrievable for "how do I compute sick hours to days?" even at top-15. Documented as a known limit (needs chunking work, not a top-k bump). The 5 justified refusals (in-003/016/026/028/040) are correct — the gold page isn't retrieved at all.
+
+### Still open
+- **Task 8 — judge calibration:** ~25 human labels → Cohen's κ vs the o4-mini judge (makes the correctness number trustworthy). Needs a human pass.
+- **Task 9 — RAGAS sanity sample:** real `ragas` on ~10 items to cross-check our custom faithfulness/relevancy.
+- **Agent path** eval parked by choice; **in-032 chunking** is a follow-up.
 
 ---
 
