@@ -22,10 +22,17 @@ def test_faithfulness_empty_claims_is_one():
     assert judges.faithfulness("ans", "ctx", generate_fn=fn).score == 1.0
 
 
-def test_answer_relevancy_and_correctness_clamp():
+def test_answer_relevancy_clamp():
     assert judges.answer_relevancy("q", "a", generate_fn=_fake({"score": 1.4})) == 1.0
-    assert judges.answer_correctness("q", "a", "gold", generate_fn=_fake({"score": -2})) == 0.0
-    assert judges.answer_correctness("q", "a", "gold", generate_fn=_fake({"score": 0.75})) == 0.75
+    assert judges.answer_relevancy("q", "a", generate_fn=_fake({"score": -2})) == 0.0
+    assert judges.answer_relevancy("q", "a", generate_fn=_fake({"score": 0.75})) == 0.75
+
+
+def test_answer_correctness_from_booleans():
+    f = judges.answer_correctness
+    assert f("q", "a", "g", generate_fn=_fake({"contradicts": False, "answers_question": True})) == 1.0
+    assert f("q", "a", "g", generate_fn=_fake({"contradicts": True, "answers_question": True})) == 0.0
+    assert f("q", "a", "g", generate_fn=_fake({"contradicts": False, "answers_question": False})) == 0.0
 
 
 def test_refusal_correctness():

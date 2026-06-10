@@ -80,17 +80,33 @@ def answer_relevancy(question: str, answer: str, *, generate_fn=None) -> float |
 
 
 _CORRECT_SYS = (
-    "דרג מ-0 עד 1 עד כמה התשובה נכונה ועקבית עם פסקת הייחוס (ground truth), "
-    "ועונה על השאלה. מספרים שגויים או כללי זכאות שגויים = ציון נמוך. "
-    "החזר JSON בלבד: {\"score\": <0..1>}."
+    "אתה מדרג נכונות של תשובה לעוזר זכויות מול פסקת ייחוס (אמת-מידה לעובדות המרכזיות). "
+    "בדוק שני דברים בלבד:\n"
+    "1. contradicts — האם התשובה סותרת עובדה בפסקת הייחוס, או נוקבת במספר / כלל "
+    "זכאות שגוי לעומת פסקת הייחוס?\n"
+    "2. answers_question — האם התשובה עונה על השאלה?\n"
+    "התעלם לחלוטין מפרטים נוספים בתשובה שאינם מופיעים בפסקת הייחוס — הם אינם שגיאה, "
+    "אינם 'לא מגובים', ואינם נחשבים סתירה (נאמנות נבדקת בנפרד). "
+    "החזר JSON בלבד: {\"contradicts\": true|false, \"answers_question\": true|false}."
 )
 
 
 def answer_correctness(question: str, answer: str, gold_paragraph: str,
                        *, generate_fn=None) -> float | None:
+    """1.0 iff the answer does not contradict the gold AND answers the question.
+
+    Decomposed into two booleans rather than a holistic 0–1 score: contradiction
+    detection is far more stable than asking the model to grade, and it stops the
+    judge from docking points merely for correct detail beyond the narrow gold
+    paragraph (that over-penalisation is the artifact this redesign exists to fix;
+    groundedness of the extra detail is measured separately by ``faithfulness``).
+    """
     prompt = f"שאלה:\n{question}\n\nפסקת ייחוס:\n{gold_paragraph}\n\nתשובה:\n{answer}"
     d = _call(generate_fn, prompt, _CORRECT_SYS)
-    return None if d is None else _clamp(d.get("score"))
+    if d is None:
+        return None
+    ok = (not bool(d.get("contradicts"))) and bool(d.get("answers_question"))
+    return 1.0 if ok else 0.0
 
 
 _REFUSE_SYS = (
