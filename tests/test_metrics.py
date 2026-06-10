@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from eval import metrics
+from eval.metrics import _legacy
 
 
 def test_hit_at_k():
@@ -14,9 +15,10 @@ def test_hit_at_k():
 
 
 def test_parse_json_extracts_object_from_noisy_output():
-    assert metrics._parse_json('here is the json: {"a": 1, "b": true}') == {"a": 1, "b": True}
-    assert metrics._parse_json("no json at all") == {}
-    assert metrics._parse_json('```json\n{"x": false}\n```') == {"x": False}
+    # _parse_json is a private helper of the legacy Gemini judge module.
+    assert _legacy._parse_json('here is the json: {"a": 1, "b": true}') == {"a": 1, "b": True}
+    assert _legacy._parse_json("no json at all") == {}
+    assert _legacy._parse_json('```json\n{"x": false}\n```') == {"x": False}
 
 
 def test_judge_in_scope_with_fake_llm():
