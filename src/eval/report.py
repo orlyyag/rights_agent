@@ -1,17 +1,18 @@
-"""Aggregate ``eval/results_he.jsonl`` into a markdown baseline report.
+"""Aggregate ``eval/results_he_{path}.jsonl`` into a markdown report.
 
 Run (from repo root):
-    PYTHONPATH=.:src python -m eval.report
+    PYTHONPATH=.:src python -m eval.report --path linear
+    PYTHONPATH=.:src python -m eval.report --path agent
 """
 from __future__ import annotations
 
+import argparse
 import json
 import statistics
+import sys
 from collections import Counter
 from pathlib import Path
 
-RESULTS_PATH = Path("eval") / "results_he.jsonl"
-REPORT_PATH = Path("eval") / "report_he.md"
 HIT_K = 5
 
 
@@ -46,8 +47,10 @@ def _table(rows: list[tuple[str, str]]) -> str:
     return "| Metric | Value |\n|---|---|\n" + "\n".join(f"| {k} | {v} |" for k, v in rows)
 
 
-def main() -> None:
-    records = _load(RESULTS_PATH)
+def main(path: str = "linear") -> None:
+    results_path = Path("eval") / f"results_he_{path}.jsonl"
+    report_path = Path("eval") / f"report_he_{path}.md"
+    records = _load(results_path)
     errors = [r for r in records if "error" in r]
     in_scope = [r for r in records if r.get("category") == "in_scope" and "error" not in r]
     adv = [r for r in records if r.get("category") == "adversarial" and "error" not in r]
@@ -74,14 +77,13 @@ def main() -> None:
     # Latency
     latencies = [r["latency_s"] for r in records if "latency_s" in r]
 
+    path_label = "agent (Tier-1 LangGraph loop)" if path == "agent" else "linear (Tier-0)"
     md = [
-        "# Hebrew evaluation — Tier-0 baseline",
+        f"# Hebrew evaluation — {path_label}",
         "",
-        f"Linear retrieve → generate → cite path (`rag/answer.py`), corpus index "
-        f"`kz_corpus_he` (Webiks May-2024 corpus, 24,487 chunks). Golden set: "
-        f"{n_inscope} in-scope (random sample, seed=42, from "
-        f"`Webiks_KolZchut_QA_Training_DataSet_v0.1.csv` after cleaning) + "
-        f"{n_adv} hand-written adversarial.",
+        f"Answer path: **{path}**. Golden set: {n_inscope} in-scope (random "
+        f"sample, seed=42, from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv` "
+        f"after cleaning) + {n_adv} hand-written adversarial.",
         "",
         "## Retrieval",
         _table([
@@ -138,10 +140,17 @@ def main() -> None:
         for r in errors:
             md.append(f"- `{r['id']}`: {r['error']}")
 
-    REPORT_PATH.write_text("\n".join(md), encoding="utf-8")
-    print(f"Wrote {REPORT_PATH}")
+    report_path.write_text("\n".join(md), encoding="utf-8")
+    print(f"Wrote {report_path}")
     print("\n" + "\n".join(md[:20]))
 
 
+def cli() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--path", choices=["linear", "agent"], default="linear")
+    args = ap.parse_args()
+    main(args.path)
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

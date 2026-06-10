@@ -1,4 +1,4 @@
-"""Per-question eval runner. Scores the linear Tier-0 RAG path against the
+"""Per-question eval runner. Scores the linear OR agent RAG path against the
 golden set; writes JSONL results. ``report.py`` consumes the output.
 
 For each in-scope item: retrieve (top-K) → answer → judge → log metrics.
@@ -6,11 +6,18 @@ For each adversarial item: answer → judge refusal → log.
 Latency is recorded so A2 (latency improvement) has a baseline.
 
 Run (from repo root):
-    PYTHONPATH=.:src python -m eval.run_eval
+    PYTHONPATH=.:src python -m eval.run_eval                  # default: linear (Tier-0 baseline)
+    PYTHONPATH=.:src python -m eval.run_eval --path agent     # Tier-1 agent loop (R4 + R5)
+
+Output filenames carry the path so both runs coexist:
+    eval/results_he_linear.jsonl + eval/report_he_linear.md
+    eval/results_he_agent.jsonl  + eval/report_he_agent.md
 """
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -20,9 +27,8 @@ from rag import answer as answer_mod
 from rag import retriever
 
 GOLDEN_PATH = Path("eval") / "golden_he.jsonl"
-RESULTS_PATH = Path("eval") / "results_he.jsonl"
 HIT_K = 5
-INTER_QUESTION_SLEEP_S = 1.5  # extra pacing — each Q makes ~3 LLM calls (gen + 2 judge)
+INTER_QUESTION_SLEEP_S = 1.5  # pacing — each Q makes ~3 LLM calls (linear) or ~5 (agent)
 
 
 def _iter_golden(path: Path):
@@ -39,11 +45,17 @@ def _retrieved_doc_ids(question: str, lang: str) -> list[str]:
     return [str(c.meta.pageid) for c in chunks]
 
 
-def _eval_one(item: dict) -> dict:
+def _answer_fn(path: str):
+    if path == "agent":
+        return answer_mod.answer_agent
+    return answer_mod.answer
+
+
+def _eval_one(item: dict, answer_fn) -> dict:
     lang = item["lang"]
     q = item["question"]
     t0 = time.monotonic()
-    a = answer_mod.answer(q, lang)
+    a = answer_fn(q, lang)
     latency_s = time.monotonic() - t0
 
     base = {
@@ -81,14 +93,17 @@ def _eval_one(item: dict) -> dict:
     return base
 
 
-def main() -> None:
+def main(path: str = "linear") -> None:
     items = list(_iter_golden(GOLDEN_PATH))
-    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Eval: {len(items)} questions → {RESULTS_PATH}")
-    with RESULTS_PATH.open("w", encoding="utf-8") as out:
+    results_path = Path("eval") / f"results_he_{path}.jsonl"
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    answer_fn = _answer_fn(path)
+    print(f"Eval ({path}): {len(items)} questions → {results_path}")
+    with results_path.open("w", encoding="utf-8") as out:
         for i, item in enumerate(items, 1):
             try:
-                rec = _eval_one(item)
+                rec = _eval_one(item, answer_fn)
+                rec["answer_path"] = path
                 out.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 out.flush()
                 marker = (
@@ -103,8 +118,16 @@ def main() -> None:
                 out.write(json.dumps({"id": item["id"], "error": str(exc)}, ensure_ascii=False) + "\n")
                 out.flush()
             time.sleep(INTER_QUESTION_SLEEP_S)
-    print(f"Done. Run `python -m eval.report` for the summary.")
+    print(f"Done. Run `python -m eval.report --path {path}` for the summary.")
+
+
+def cli() -> None:
+    ap = argparse.ArgumentParser(description="Score the linear or agent path against golden_he.jsonl")
+    ap.add_argument("--path", choices=["linear", "agent"], default="linear",
+                    help="answer path to evaluate (default: linear)")
+    args = ap.parse_args()
+    main(args.path)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

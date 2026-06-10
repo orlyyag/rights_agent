@@ -1,6 +1,6 @@
-# Hebrew evaluation — Tier-0 baseline
+# Hebrew evaluation — linear (Tier-0)
 
-Linear retrieve → generate → cite path (`rag/answer.py`), corpus index `kz_corpus_he` (Webiks May-2024 corpus, 24,487 chunks). Golden set: 40 in-scope (random sample, seed=42, from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv` after cleaning) + 8 hand-written adversarial.
+Answer path: **linear**. Golden set: 40 in-scope (random sample, seed=42, from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv` after cleaning) + 8 hand-written adversarial.
 
 ## Retrieval
 | Metric | Value |

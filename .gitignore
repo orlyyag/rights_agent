@@ -24,3 +24,4 @@ data/qa/
 eval/results_*.jsonl
 eval/run.log
 data/acquire.log
+data/build_pipeline.log
