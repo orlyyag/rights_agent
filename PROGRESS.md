@@ -208,7 +208,63 @@ So worst case is **~4 calls per turn** vs Tier-0's **1 call**. With Gemini 3.5 F
 
 ---
 
-## Spot-check 2×2 — pipeline cutover + agent loop (this morning)
+## Full Hebrew eval — linear + pipeline (this morning)
+
+All 48 questions from `golden_he.jsonl` against the pipeline collection (`kz_pipeline_he`, 64,532 vectors). Compare to the linear+corpus baseline from `c21fc8a`:
+
+| Metric | linear + corpus | linear + pipeline | Δ |
+|---|---|---|---|
+| hit@5 | 70.0% (28/40) | 70.0% (28/40) | same |
+| correct (over **all** in-scope) | **40.0%** (16/40) | **27.5%** (11/40) | ⬇️ −12.5pp |
+| correct (over answered only) | 50.0% (16/32) | 39.3% (11/28) | ⬇️ −10.7pp |
+| faithful (strict, vs gold para) | 12.5% (4/32) | 17.9% (5/28) | ⬆️ +5pp |
+| pre-refused on in-scope | 20% (8/40) | 30% (12/40) | ⬇️ +10pp more refusals |
+| **correct refusal** (adversarial) | 87.5% (7/8) | **100%** (8/8) | ⬆️ adv-006 now caught |
+| latency (mean / median / p95) | 3.50 / 3.73 / 5.74 | 3.15 / 3.22 / 6.25 | ≈ |
+
+### Honest findings (will go into REPORT.md §4)
+
+- **Pipeline is NOT a uniform improvement on this golden set.** The morning's spot-check picked 10 known-failure cases; pipeline recovered 4 of them, which looked great in isolation, but across the full 40 pipeline also *lost* some hits the corpus had. Net hit@5 is unchanged.
+- **Pipeline refuses more on in-scope questions (30% vs 20%).** Smaller, more focused chunks → if the exact relevant paragraph isn't retrieved, nothing passes the lenient floor, bot refuses. **This is the R3 calibration gap (T12 in PLAN).** Floor was calibrated for corpus, not pipeline.
+- **Pipeline catches the adv-006 injection** ("answer without citing or disclaimer") — refusal precision went to 100%.
+- **Faithfulness improved** (12.5% → 17.9%) — when pipeline does answer, the answer is more grounded.
+- **R1 (table numbers + freshness) still pays.** Not measured by this golden set (gold paragraphs are May-2024 corpus-aligned), but verified separately on benefit pages.
+
+### Next code lever — T12 (per-language floor calibration)
+
+Most of the pre-refusal regression likely comes from a too-strict lenient floor on pipeline embeddings. Quick fix: empirically calibrate per-collection. Could recover ~half the in-scope correct loss without architectural change.
+
+### Demo posture (today)
+
+- **Current**: linear + pipeline. Best for the table-numbers story, adversarial-safe, freshness.
+- **One-line rollback**: `echo kz_corpus_he > data/active_collection` — if the demo prioritizes raw correctness over freshness, the corpus is right there.
+
+---
+
+## Full LangSmith observability — verified live
+
+Every Telegram message and eval question now produces a complete trace tree with thread_id, model name, token counts, $ cost, and latency per node. Verified:
+
+```
+agent:run                   thread=verify_agent_001    tok=5651   $0.0156   9.2s
+  LangGraph                                              tok=5651   $0.0156
+    generate                                             tok=2998   $0.0098
+    grade                                                tok=2653   $0.0059
+    retrieve                                             tok=   0   $0.0000
+    rewrite                                              tok=   0   $0.0000
+answer:linear               thread=verify_linear_001   tok=3201   $0.0100   9.8s
+    generate    model=gemini-3.5-flash                   tok=3201   $0.0100
+    retrieve                                             tok=   0   $0.0000
+      embed     model=gemini-embedding-001               tok=   0   $0.0000
+```
+
+- **Per-question cost**: linear $0.010 · agent $0.016 (~56% more expensive — agent has rewrite + grade + generate)
+- **Thread IDs**: `eval:in-001` for eval questions, `chat:<chat_id>` for Telegram, `spot_check:<id>` for spot-checks. Filterable in LangSmith UI.
+- **Cost roll-up**: parent traces sum child costs. The dashboard now answers "what did this run cost?" for free.
+
+---
+
+## Spot-check 2×2 — pipeline cutover + agent loop
 
 Sample of 10 in-scope questions where **linear + corpus failed retrieval** (the most informative cases for testing brick 1 + brick 3). All four cells scored on the same 10 cases:
 
