@@ -22,7 +22,8 @@ import time
 from pathlib import Path
 
 import config
-from eval import metrics
+from eval.metrics import heuristics as H
+from eval.metrics import judges as J
 from rag import answer as answer_mod
 from rag import retriever
 
@@ -39,10 +40,16 @@ def _iter_golden(path: Path):
                 yield json.loads(line)
 
 
-def _retrieved_doc_ids(question: str, lang: str) -> list[str]:
-    """Same retrieval the answer path uses, but expose the chunks' doc_ids for hit@k."""
+def _retrieve_context(question: str, lang: str):
+    """Top-K chunks with text — for hit@k AND faithfulness/context-precision.
+
+    Returns (doc_ids, context) where context is a list of {doc_id,title,text}.
+    """
     chunks = retriever.retrieve(question, lang, top_k=HIT_K)
-    return [str(c.meta.pageid) for c in chunks]
+    ids = [str(c.meta.pageid) for c in chunks]
+    context = [{"doc_id": str(c.meta.pageid), "title": c.meta.title, "text": c.text}
+               for c in chunks]
+    return ids, context
 
 
 def _answer_fn(path: str):
@@ -75,24 +82,45 @@ def _eval_one(item: dict, answer_fn) -> dict:
     }
 
     if item["category"] == "in_scope":
-        # hit@k uses an independent retrieval call (the answer path may have used
-        # fewer than HIT_K chunks after the floor cut; we want the standard k=5).
-        retrieved_ids = _retrieved_doc_ids(q, lang)
-        base["retrieved_doc_ids"] = retrieved_ids
-        base[f"hit@{HIT_K}"] = metrics.hit_at_k(retrieved_ids, item["gold_doc_id"], HIT_K)
+        # Independent top-K retrieval (the answer path may keep fewer after the
+        # floor cut; hit@k wants the standard k). Capture the chunk TEXT too so
+        # faithfulness can be judged against what the generator actually saw.
+        retrieved_ids, context = _retrieve_context(q, lang)
+        gold = item.get("gold_doc_ids") or item["gold_doc_id"]   # set or scalar
+        hit = H.hit_at_k(retrieved_ids, gold, HIT_K)
+        cited_urls = [c.url for c in a.citations]
+        base.update(
+            retrieved_doc_ids=retrieved_ids,
+            retrieved_context=context,
+            cited_doc_ids=cited_urls,
+            recall_at_k=H.recall_at_k(retrieved_ids, gold, HIT_K),
+            mrr=H.mrr(retrieved_ids, gold),
+            citation_present=H.citation_present(cited_urls),
+            has_citation=H.citation_present(cited_urls),   # back-compat alias
+            citation_valid=H.citation_valid(cited_urls),
+            language_match=H.language_match(a.text, lang),
+            refusal_kind=H.refusal_kind(refused=a.refused, hit=hit),
+        )
+        base[f"hit@{HIT_K}"] = hit
         if a.refused:
-            # Refused on an in-scope question — judge can't score correctness; mark as miss.
-            base.update(correct=False, language_match=False, faithful=False, has_citation=False)
+            # Refused on an in-scope question — no answer to judge.
+            base.update(correct=None, faithful=None, answer_relevancy=None,
+                        answer_correctness=None)
         else:
-            judged = metrics.judge_in_scope(q, a.text, item["gold_paragraph"])
+            ctx_text = "\n\n".join(c["text"] for c in context)
+            faith = J.faithfulness(a.text, ctx_text)
+            relev = J.answer_relevancy(q, a.text)
+            corr = J.answer_correctness(q, a.text, item["gold_paragraph"])
             base.update(
-                correct=judged.correct,
-                language_match=judged.language_match,
-                faithful=judged.faithful,
-                has_citation=judged.has_citation,
+                faithful=(faith.score if faith else None),
+                faithful_supported=(faith.n_supported if faith else None),
+                faithful_claims=(faith.n_claims if faith else None),
+                answer_relevancy=relev,
+                answer_correctness=corr,
+                correct=(None if corr is None else corr >= 0.5),
             )
     else:  # adversarial
-        base["refused_correctly"] = metrics.judge_refusal(q, a.text)
+        base["refused_correctly"] = J.refusal_correctness(q, a.text)
 
     return base
 
