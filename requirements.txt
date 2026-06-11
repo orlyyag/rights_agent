@@ -1,11 +1,13 @@
-# Pinned loosely for the sprint; tighten before the final.
-google-genai>=0.8
-chromadb>=0.5
-langgraph>=0.2
-python-telegram-bot>=21
-# ragas>=0.2                 # DROPPED: no scikit-network wheel on Py3.14; conflicts w/ langchain v1 on 3.13.
+# Exact pins from the verified working venv (Python 3.14) — reproducible for graders.
+google-genai==2.8.0
+chromadb==1.5.9
+langgraph==1.2.4
+python-telegram-bot==22.7
+beautifulsoup4==4.15.0      # HTML→text cleaning (src/ingest/clean.py)
+requests==2.34.2            # MediaWiki client (src/ingest/mediawiki.py)
+# ragas                      # DROPPED: no scikit-network wheel on Py3.14; conflicts w/ langchain v1 on 3.13.
                             # We use custom Hebrew-aware RAGAS-style judges (eval/metrics/judges.py) instead.
-langsmith>=0.4              # @traceable observability (A8); opt-in via LANGSMITH_API_KEY
-python-dotenv>=1.0
-pytest>=8.0
-openai>=1.40                # eval judge only (o4-mini, cross-provider); the bot itself never calls OpenAI
+langsmith==0.8.11           # @traceable observability (A8); opt-in via LANGSMITH_API_KEY
+python-dotenv==1.2.2
+pytest==9.0.3
+openai==2.41.0              # eval judge only (gpt-4.1, cross-provider); the bot itself never calls OpenAI

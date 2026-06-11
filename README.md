@@ -9,7 +9,7 @@ See [PLAN.md](PLAN.md) for the design (architecture, decisions) and
 ## Setup
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate   # tested on Python 3.14
 pip install -r requirements.txt
 cp .env.example .env   # then fill GEMINI_API_KEY, TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_IDS
 ```
