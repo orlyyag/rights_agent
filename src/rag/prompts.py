@@ -80,10 +80,16 @@ _SYSTEM = (
 
 def _language_instruction(lang: str) -> str:
     if lang == config.AUTO_LANG:
+        # The sources are Hebrew/Russian, which pulls the model toward answering
+        # in Hebrew — so the question's language must be stated as the overriding
+        # rule, not a preference (observed live with gemini-3.5-flash).
         return (
-            "Identify the main natural language of the user's question from the "
-            "question text, then answer in that same language. Do not mention "
-            "language detection."
+            "Answer in the language the user's question is written in — NEVER in "
+            "the language of the sources. The sources are Hebrew/Russian; the "
+            "question may be in English, French, Arabic, etc. Translate what the "
+            "sources say into the question's language. For example, an English "
+            "question MUST get an English answer. Do not mention language "
+            "detection."
         )
     name = LANG_NAMES.get(lang, "the user's language")
     return f"Answer in {name}."

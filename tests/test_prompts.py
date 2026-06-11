@@ -32,8 +32,8 @@ def test_system_prompt_enforces_grounding_and_language():
 
 def test_auto_system_prompt_identifies_main_question_language():
     sp = prompts.system_prompt("auto")
-    assert "main natural language" in sp
-    assert "same language" in sp
+    assert "language the user's question is written in" in sp
+    assert "NEVER in the language of the sources" in sp
     assert "legal disclaimer" in sp
     # Disclaimer must be emitted with the wrapper tags so we can parse it out
     # deterministically — §7 cannot be left to model goodwill alone.
@@ -50,5 +50,5 @@ def test_generation_prompt_includes_question_and_sources():
 
 def test_auto_generation_prompt_keeps_question_language():
     p = prompts.build_generation_prompt("What am I entitled to after birth?", [_rc("מענק לידה", "תוכן")], "auto")
-    assert "main natural language" in p
+    assert "NEVER in the language of the sources" in p
     assert "What am I entitled to" in p
