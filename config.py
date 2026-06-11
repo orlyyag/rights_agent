@@ -58,6 +58,10 @@ EMBED_TASK_QUERY = "RETRIEVAL_QUERY"                # asymmetric: queries (Q1)
 GEN_TEMPERATURE = 0.0
 GEN_THINKING_BUDGET = 0                             # low/zero live thinking (Q2)
 
+# Crawler etiquette (PLAN §5.3): included in the MediaWiki User-Agent when set,
+# so the repo itself carries no personal email.
+CONTACT_EMAIL = _env("KZ_CONTACT_EMAIL")
+
 # ── Data source + languages (§0 #2) ─────────────────────────────────────────
 SOURCE = _env("KZ_SOURCE", "corpus")               # "corpus" | "pipeline"
 # Indexed/source languages. Answer-language auto mode below can answer in more

@@ -20,15 +20,20 @@ from typing import Any, Iterator
 
 import requests
 
+import config
+
 # Per-language endpoints (verified live in PLAN §5.1).
 ENDPOINTS = {
     "he": "https://www.kolzchut.org.il/w/api.php",
     "ru": "https://www.kolzchut.org.il/w/ru/api.php",
 }
 
+# Contact comes from the environment (KZ_CONTACT_EMAIL) so the repo carries no
+# personal email; the UA stays descriptive either way (their CDN blocks bot UAs).
 DEFAULT_UA = (
-    "KolZchutRightsAgent/0.1 (final project; rights-info bot grounded in Kol Zchut; "
-    "contact: yanyag@gmail.com)"
+    "KolZchutRightsAgent/0.1 (final project; rights-info bot grounded in Kol Zchut"
+    + (f"; contact: {config.CONTACT_EMAIL}" if config.CONTACT_EMAIL else "")
+    + ")"
 )
 
 

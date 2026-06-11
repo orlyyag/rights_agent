@@ -14,6 +14,33 @@ pip install -r requirements.txt
 cp .env.example .env   # then fill GEMINI_API_KEY, TELEGRAM_BOT_TOKEN, ALLOWED_CHAT_IDS
 ```
 
+## Run
+
+Build the index once (crawls both wikis politely at ~1 req/s, then chunks and
+embeds — a few dollars of Gemini embedding credit):
+
+```bash
+export PYTHONPATH=.:src
+python scripts/acquire.py he            # crawl Hebrew wiki  → data/raw/he/
+python scripts/acquire.py ru            # crawl Russian wiki → data/raw/ru/
+python scripts/build_pipeline.py he     # chunk+embed Hebrew → flip active pointer
+python scripts/build_bilingual.py       # add Russian on top → bilingual kz_v2 → flip
+```
+
+Then ask a question from the CLI, or run the Telegram bot:
+
+```bash
+python scripts/ask.py "מה מגיע לי אחרי לידה?"
+scripts/run_bot.sh                      # detached; status_bot.sh / stop_bot.sh to manage
+```
+
+Keep the index fresh with the incremental sync (manifest diff → blue-green
+build → atomic pointer flip, no bot restart):
+
+```bash
+python scripts/sync.py he ru
+```
+
 ## Layout
 
 ```
