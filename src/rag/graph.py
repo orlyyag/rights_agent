@@ -142,7 +142,7 @@ def node_generate(state: AgentState) -> AgentState:
                 "citations": [], "disclaimer": ""}
     body, disc = answer_mod._extract_disclaimer(text, lang)
     return {"refused": False, "answer_text": body,
-            "citations": answer_mod._citations(keep),
+            "citations": answer_mod._citations(keep, lang),
             "disclaimer": disc}
 
 

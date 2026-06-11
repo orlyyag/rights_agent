@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 
 import config
+from rag import citations as citations_mod
 from rag import llm, prompts, retriever
 from rag.llm import _set_thread_id, traceable
 from schema import Answer, Citation, RetrievedChunk
@@ -110,7 +111,7 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None,
                       disclaimer="", refused=True)
 
     body, disc = _extract_disclaimer(text, lang)
-    return Answer(text=body, lang=lang, citations=_citations(keep),
+    return Answer(text=body, lang=lang, citations=_citations(keep, lang),
                   disclaimer=disc, refused=False)
 
 
@@ -139,16 +140,24 @@ def answer_default(question: str, lang: str,
     return answer(question, lang, thread_id=thread_id)
 
 
-def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
-    """Up to MAX_CITATIONS unique sources, in retrieval order (R6)."""
+def _citations(chunks: list[RetrievedChunk], lang: str = "he") -> list[Citation]:
+    """Up to MAX_CITATIONS unique sources, in retrieval order (R6).
+
+    Links follow the citation language policy: ru questions get ru links,
+    he/auto get he links — cross-language chunks are mapped via langlinks
+    (``rag.citations``). Dedup runs AFTER localization, so the he and ru
+    chunks of the same underlying page collapse into one citation.
+    """
+    target = citations_mod.desired_citation_lang(lang)
     seen: set[str] = set()
     out: list[Citation] = []
     for c in chunks:
-        key = c.meta.url or c.meta.title
+        title, url = citations_mod.localize(c.meta, target)
+        key = url or title
         if key in seen:
             continue
         seen.add(key)
-        out.append(Citation(title=c.meta.title, url=c.meta.url))
+        out.append(Citation(title=title, url=url))
         if len(out) >= config.MAX_CITATIONS:
             break
     return out

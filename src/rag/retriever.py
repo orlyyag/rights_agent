@@ -89,29 +89,31 @@ def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None
     ``relax_filter=True`` drops the ``lang`` filter — used by the agent's
     re-retrieve when grade_docs returns ``cross_lingual_thin`` (R2/R4): retrieve
     in the other language and let generate translate per its system prompt.
-    ``lang="auto"`` also drops the filter so questions in languages without a
-    native index can still search the available Hebrew/Russian source corpus.
-    If the same-language query returns no chunks above the floor, retry once
-    without the filter. This keeps Russian usable while the active collection is
-    still Hebrew-only: retrieve Hebrew Kol Zchut pages, answer in Russian.
+    ``lang="auto"`` (non-he/ru question) prefers the **Hebrew** sources — the
+    most complete corpus, and the citation policy presents Hebrew links for
+    non-Russian questions. If the language-filtered query returns no chunks
+    above the floor, retry once without the filter — this keeps every language
+    usable whatever the active collection contains.
     """
     top_k = top_k or config.TOP_K
     (qvec,) = llm.embed([query], task_type=config.EMBED_TASK_QUERY)
+    filter_lang = None
+    if not relax_filter:
+        if lang in config.LANGS:
+            filter_lang = lang
+        elif lang == config.AUTO_LANG:
+            filter_lang = "he"   # non-Russian questions ground in Hebrew sources
     if collection is None:
         col_name = config.get_active_collection()
         col = _get_collection(col_name)
         # Probe once whether the active collection actually has chunks for this
         # lang; skip the filter on absence so we don't pay 2x Chroma queries per
-        # request while only Hebrew is indexed.
-        filtered = (
-            not relax_filter
-            and lang in config.LANGS
-            and _lang_present(col_name, col, lang)
-        )
+        # request (e.g. ru questions while the collection is still Hebrew-only).
+        if filter_lang is not None and not _lang_present(col_name, col, filter_lang):
+            filter_lang = None
     else:
         col = collection
-        filtered = not relax_filter and lang in config.LANGS
-    where = {"lang": lang} if filtered else None
+    where = {"lang": filter_lang} if filter_lang is not None else None
     chunks = _to_chunks(_query(col, qvec, top_k, where=where), lang)
     if chunks or where is None:
         return chunks

@@ -40,10 +40,17 @@ pytest -m "not integration"   # pure-logic, LLM-free (no network / API key)
 
 ## Language Behavior
 
-The indexed Kol Zchut sources are still Hebrew/Russian (`lang` metadata in
-Chroma). By default, `KZ_ANSWER_LANGUAGE_MODE=auto` keeps explicit Hebrew and
-Cyrillic/Russian routing, and sends other languages through an unfiltered
-multilingual embedding search. Gemini then identifies the main language of the
-question and answers in that same language from the retrieved Kol Zchut context.
+The indexed Kol Zchut sources are Hebrew/Russian (`lang` metadata in Chroma).
+By default, `KZ_ANSWER_LANGUAGE_MODE=auto` keeps explicit Hebrew and
+Cyrillic/Russian routing; questions in any other language retrieve from the
+**Hebrew** sources (the most complete corpus) and Gemini identifies the main
+language of the question and answers in that same language. If the
+language-filtered search comes back empty, retrieval retries unfiltered.
 Set `KZ_ANSWER_LANGUAGE_MODE=he_ru` to restore the original Hebrew fallback for
 Latin/ambiguous text.
+
+**Citation links follow the question:** Russian questions present Russian
+links; Hebrew and any other language present Hebrew links. When an answer used
+a chunk from the other language (cross-lingual fallback), the cited page is
+mapped to its counterpart via MediaWiki `langlinks` (cached per process). If no
+translation exists, the original link is kept — attribution is never dropped.

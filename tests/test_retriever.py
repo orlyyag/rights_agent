@@ -61,12 +61,33 @@ def test_retrieve_uses_query_task_type(monkeypatch):
     assert seen["task"] == config.EMBED_TASK_QUERY
 
 
-def test_auto_language_drops_lang_filter(monkeypatch):
+def test_auto_language_prefers_hebrew_sources(monkeypatch):
+    """Non-he/ru questions ground in the Hebrew corpus first (citation policy:
+    non-Russian questions present Hebrew links)."""
+    monkeypatch.setattr(llm, "embed", lambda texts, task_type: [[0.0, 0.0]])
+    hit = {
+        "documents": [["hebrew chunk"]],
+        "metadatas": [[_meta("he page")]],
+        "distances": [[0.2]],
+    }
+    col = _FakeCol(hit)
+    retriever.retrieve("what are my rights?", config.AUTO_LANG, collection=col)
+    assert col.captured["where"] == {"lang": "he"}
+
+
+def test_auto_language_falls_back_unfiltered_when_hebrew_empty(monkeypatch):
     monkeypatch.setattr(llm, "embed", lambda texts, task_type: [[0.0, 0.0]])
     empty = {"documents": [[]], "metadatas": [[]], "distances": [[]]}
-    col = _FakeCol(empty)
-    retriever.retrieve("q", config.AUTO_LANG, collection=col)
-    assert "where" not in col.captured
+    hit = {
+        "documents": [["ru chunk"]],
+        "metadatas": [[_meta("ru page")]],
+        "distances": [[0.2]],
+    }
+    col = _FakeSeqCol([empty, hit])
+    out = retriever.retrieve("what are my rights?", config.AUTO_LANG, collection=col)
+    assert col.calls[0]["where"] == {"lang": "he"}
+    assert "where" not in col.calls[1]
+    assert [c.text for c in out] == ["ru chunk"]
 
 
 def test_same_language_empty_falls_back_to_unfiltered(monkeypatch):
