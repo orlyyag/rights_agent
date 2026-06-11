@@ -12,10 +12,13 @@
 
 ## 1. Problem Selection & Definition (5%)
 
-**Chosen business problem.** 🤖 CC — adapt from PLAN §1: every year Israelis lose money and
-support they're legally entitled to because the rules are buried in hard-to-navigate Hebrew;
-for ~1M+ Russian speakers and elderly citizens the language barrier turns "available" into
-"invisible."
+**Chosen business problem.** Every year, Israelis forfeit money and support they are
+legally entitled to — unemployment pay, disability allowances, birth grants, housing aid —
+because the rules live in long, jargon-heavy Hebrew wiki pages. Kol Zchut documents
+~7,300 rights guides, but *finding and reading* the right one is the barrier: for the
+~1M+ Russian speakers and for elderly citizens, "publicly available" effectively means
+"invisible." The cost is concrete: benefits go unclaimed, helplines absorb repetitive
+questions, and social workers spend hours translating bureaucracy instead of helping.
 
 **Why we chose it.** 🖊️ HUMAN — personal connection (rubric prefers a problem you know from
 work/daily life). E.g. "As a Russian-speaking immigrant / having watched a family member
@@ -23,9 +26,14 @@ struggle with bituach leumi forms, …"
 
 **Background & Context**
 - **Industry/Domain:** Govtech / civic access to rights & benefits (Israel).
-- **Current Processes:** 🤖 CC — manual navigation of the Kol Zchut Hebrew wiki / calling
-  helplines / social workers; slow, inconsistent, Hebrew-first.
-- **Pain Points:** language barrier (he-only depth), unclaimed benefits, no conversational entry point.
+- **Current Processes:** a person who suspects they're entitled to something today either
+  (a) searches and reads the Kol Zchut Hebrew wiki themselves, (b) calls an NGO/government
+  helpline, or (c) asks a social worker. All three are slow, Hebrew-first, and demand the
+  user already knows the official name of the benefit ("מענק לידה") rather than their own
+  words ("money after having a baby").
+- **Pain Points:** language barrier (Hebrew-only depth), terminology gap (colloquial vs
+  official terms), unclaimed benefits, no conversational entry point where people already
+  are (messaging apps).
 - **Business/Social Impact:** 🖊️ HUMAN — quantify the stake (estimated unclaimed benefits,
   population affected). See §4 Business KPIs.
 
@@ -34,31 +42,62 @@ struggle with bituach leumi forms, …"
 ## 2. Market Research & Technical Discovery (15%)
 
 **Market Landscape**
-- **Existing Solutions:** 🤖 CC — from PLAN §3 (Kol Zchut's own beta on-site AI chat + the
-  Webiks/NNLP-IL RAG backend, Elasticsearch + fine-tuned me5-large). Cite the repos.
-- **Market Gaps:** 🤖 CC — from PLAN §3: no Telegram/messaging channel; Hebrew-only; single
-  retrieval call (not agentic); no first-class Russian.
-- **Target Audience:** 🖊️/🤖 — Russian-speaking immigrants, elderly citizens, social workers;
-  people who live in messaging apps and won't use a web widget.
+- **Existing Solutions:** Kol Zchut runs its own beta on-site AI chat ("שאלו את ה-AI שלנו"),
+  built on the open-source Webiks/NNLP-IL Hebrew RAGbot — Elasticsearch retrieval with a
+  fine-tuned `me5-large` embedder and an LLM client
+  ([Webiks-Hebrew-RAGbot](https://github.com/NNLP-IL/Webiks-Hebrew-RAGbot),
+  [KZChatbot extensions](https://github.com/kolzchut)). It is a web widget on the wiki
+  itself, Hebrew-only, with a single retrieval pass.
+- **Market Gaps:** no messaging-app channel (people who need this most won't find a widget
+  on a wiki they can't read); Hebrew-only depth despite a 4,072-article Russian wiki; a
+  single retrieval call with no self-correction for colloquial phrasing; no published
+  evaluation methodology.
+- **Target Audience:** Russian-speaking immigrants, elderly citizens, and the social
+  workers who serve them — populations that live in Telegram/WhatsApp and will not adopt a
+  new app or website.
 
 **Technical Discovery**
 - **Stakeholder Interviews:** 🖊️ **HUMAN (T16)** — summarize ≥2 conversations (ru-speaker who
   navigated IL bureaucracy / KZ user / social worker). 2–3 insights each.
-- **Data Availability & Quality:** 🤖 CC — from PLAN §5.1: KZ MediaWiki API (he ~7,338 / ru
-  4,072 articles), CC BY-NC-SA license, official Paragraph Corpus (he, pre-chunked, May-2024
-  snapshot — **tables flattened**), QA dataset (CC-BY-4.0) for the golden set.
-- **Feasibility Assessment:** 🤖 CC — from PLAN §10/§13: Gemini + Chroma zero-train stack;
-  constraints = WAF throttling, HTML cleaning, cross-lingual recall (validated by the spike).
+- **Data Availability & Quality:** Kol Zchut's MediaWiki API is open and read-accessible
+  (he ~7,338 / ru ~4,072 content articles; CC BY-NC-SA 2.5 IL — attribute + link back,
+  which our citation footer does by design). Two official datasets bootstrap the project:
+  the Paragraph Corpus (Hebrew, pre-chunked, May-2024 snapshot — **benefit tables are
+  flattened to text**, a verified data-quality finding that motivated building our own
+  pipeline) and the QA dataset (CC-BY-4.0), which seeds the golden set.
+- **Feasibility Assessment:** a zero-train stack (Gemini multilingual embeddings + local
+  Chroma) makes bilingual retrieval feasible in days, not weeks. Verified constraints:
+  the site's WAF blocks default bot user-agents (solved: descriptive UA + ~1 req/s
+  throttle + `maxlag`), HTML needs custom cleaning (tables→Markdown to preserve benefit
+  amounts), and cross-lingual recall is usable but weaker than native-language indexes —
+  which is why native Russian is the required path and cross-lingual is a fallback.
 
 ---
 
 ## 3. Proposed GenAI System Architecture (20%)
 
-**Solution Concept.** 🤖 CC — from PLAN §4.0: a bilingual Telegram agent; agentic RAG over a
-single multilingual Chroma store, grounded answers with citations + disclaimer, refuse-if-empty.
+**Solution Concept.** A multilingual Telegram agent for Israeli rights questions. The user
+asks in their own words and language; the bot retrieves matching Kol Zchut guides from a
+single lang-tagged Chroma store, generates a grounded answer **in the user's language**
+with up to 3 source citations and a legal disclaimer, and refuses when the knowledge base
+doesn't cover the question — it never invents. Hebrew and Russian are first-class (script
+detection + native indexes); any other language is served by an auto mode that retrieves
+cross-lingually and answers in the question's language.
 
-**Key Functionalities** (technical + business benefit). 🤖 CC — from PLAN §4 "Five components":
-ingestion pipeline, LangGraph agent core, Telegram bot, Guardrails, Evaluations.
+**Key Functionalities** (technical → business benefit):
+1. **Ingestion pipeline** (MediaWiki manifest-diff → clean → chunk → embed, blue-green
+   index swap) → answers reflect the *current* wiki, including benefit amounts the static
+   corpus had flattened or let go stale.
+2. **Agentic RAG core** (LangGraph: history-aware rewrite → retrieve → grade_docs →
+   bounded re-retrieve → generate) → colloquial questions and follow-ups get a second,
+   smarter retrieval pass instead of a wrong answer.
+3. **Telegram bot** (long-poll, HTML rendering, bidi-safe) → meets users where they
+   already are; zero onboarding.
+4. **Guardrails** (allowlist, rate cap, language enforcement, PII-redacted logging,
+   injection defense, refuse-if-empty, personal-advice guard) → safe to expose to real
+   users; answers stay informational, not legal advice.
+5. **Evaluations** (golden set + heuristics + human-calibrated cross-provider LLM judge)
+   → quality claims are measured, not vibes; regressions are caught before users see them.
 
 **System Architecture Diagram.** Reuse PLAN [§4.0](PLAN.md) (system-at-a-glance) + [§4.1](PLAN.md)
 (live-path zoom). 🖊️ HUMAN — redraw in draw.io/Figma for the slide (the rubric wants data
@@ -73,7 +112,7 @@ sources → preprocessing → GenAI components → output/feedback).
 | Orchestration | LangGraph | Inspectable agent graph; guardrail/eval nodes |
 | Vector store | Chroma (local) | Zero infra, metadata filter, demo-friendly |
 | Bot | python-telegram-bot (long-poll) | No public URL needed; paired-phone demo |
-| Eval | Heuristics + cross-provider LLM-judge (OpenAI o4-mini), RAGAS-style | hit/recall/MRR + per-claim faithfulness, correctness, refusal split; human-calibrated |
+| Eval | Heuristics + cross-provider LLM-judge (OpenAI gpt-4.1), RAGAS-style | hit/recall/MRR + per-claim faithfulness, correctness, refusal split; judge itself human-calibrated (o4-mini failed calibration and was replaced) |
 
 ---
 
@@ -95,12 +134,27 @@ sources → preprocessing → GenAI components → output/feedback).
 4. **Testing & Validation** — heuristic retrieval metrics + cross-provider o4-mini judge (per-claim faithfulness, correctness, relevancy) + human calibration over the golden set; E2E smoke; unit suite.
 
 **Challenges & Solutions** (the rubric rewards honest documentation)
-- **Challenge:** official corpus flattened benefit tables (silent wrong-number risk).
-  **Solution (R1):** Tier-0 demo curates away from tabular amounts; our pipeline does tables→Markdown,
-  gated by an eval case on a known benefit page.
-- **Challenge:** cross-lingual recall uncertainty. **Solution:** the spike (T7) characterizes
-  filter-relax; native Russian is the required path (4,072 ru articles).
-- **Challenge:** 🖊️ HUMAN — add the real ones you hit (WAF, latency, …).
+- **Challenge:** official corpus flattened benefit tables (silent wrong-number risk) and
+  was a stale May-2024 snapshot. **Solution (R1):** our pipeline converts HTML tables to
+  Markdown with numbers verbatim; verified on real benefit pages — the corpus said 1,986₪
+  for the first-child birth grant, the live pipeline pulls the current 2,103₪.
+- **Challenge:** the golden set itself was noisy — the Webiks `gold_paragraph` is a
+  retrieval-training chunk, often tangential to the question, so correct answers were
+  failing eval. **Solution:** re-curated all 40 golds against the actual indexed page text
+  (machine-verified verbatim); correctness moved +12.5pp from the *measurement* fix alone.
+- **Challenge:** the LLM-as-judge was wrong before the bot was. The first judge (o4-mini)
+  under-credited long correct answers and flipped verdicts between identical runs.
+  **Solution:** human adjudication of all answered items as a calibration anchor → swapped
+  the judge to gpt-4.1, which tracks human judgment (91.2% vs 88.2%). Full war story in
+  [PROGRESS.md](PROGRESS.md).
+- **Challenge:** 7/40 in-scope questions were falsely refused. The suspected cause
+  (similarity floor too strict) was **disproved** by a calibration sweep — gold chunks
+  score 0.67–0.84, far above the 0.35 floor. The real cause was generation-time
+  over-refusal. **Solution:** prompt now permits applying stated rules to the user's case
+  (plus an explicit personal-advice guard); false refusals 7 → 1 with faithfulness held
+  at 100% and adversarial refusal at 100%.
+- **Challenge:** the site's WAF blocks default bot user-agents. **Solution:** descriptive
+  UA + ~1 req/s throttle + `maxlag=5` + resumable manifest-diff crawling.
 - **If the POC missed target:** 🖊️ HUMAN — document what you tried + how you adjusted scope.
 
 **System Performance — Technical KPIs** (🖊️ fill *Achieved* after eval / T17)

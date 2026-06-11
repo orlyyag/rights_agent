@@ -60,7 +60,15 @@ GEN_THINKING_BUDGET = 0                             # low/zero live thinking (Q2
 
 # ── Data source + languages (§0 #2) ─────────────────────────────────────────
 SOURCE = _env("KZ_SOURCE", "corpus")               # "corpus" | "pipeline"
+# Indexed/source languages. Answer-language auto mode below can answer in more
+# languages than the source corpus contains by letting Gemini translate from the
+# retrieved Hebrew/Russian context.
 LANGS = ("he", "ru")
+AUTO_LANG = "auto"
+# "auto" = he/ru script detection when possible; otherwise let Gemini identify
+# the question's main language and answer in that same language. "he_ru" keeps
+# the old behavior: non-he/ru text falls back to Hebrew.
+ANSWER_LANGUAGE_MODE = _env("KZ_ANSWER_LANGUAGE_MODE", "auto")
 
 # ── Collections / blue-green (§0 #4) ─────────────────────────────────────────
 COLLECTION_PREFIX = "kz_v"

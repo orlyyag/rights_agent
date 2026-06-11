@@ -26,7 +26,7 @@ from rag import llm
 from rag.llm import traceable
 
 _REWRITE_SYSTEM = (
-    "You are a query rewriter for a Hebrew/Russian rights assistant.\n"
+    "You are a query rewriter for a multilingual rights assistant.\n"
     "Given the recent conversation (last 2–3 turns) and the user's CURRENT message, "
     "decide whether the current message is a follow-up to the prior topic or a fresh "
     "new question, then produce ONE standalone search query.\n\n"
@@ -36,7 +36,7 @@ _REWRITE_SYSTEM = (
     "benefits, current is 'and for freelancers?' → 'maternity benefits for self-employed'.\n"
     "- If the current message switches topic, treat as new — return the current message "
     "verbatim as the query. Do NOT fuse unrelated topics.\n"
-    "- Keep the query in the user's language.\n\n"
+    "- Keep the query in the user's main language.\n\n"
     "Respond with STRICT JSON ONLY:\n"
     '{"query": "<standalone query>", "is_follow_up": <bool>, "reason": "<short>"}'
 )
@@ -46,7 +46,9 @@ _BROADEN_SYSTEM = (
     "The user's query as written did not match any relevant documents. "
     "Rewrite it using broader / more official Kol Zchut terminology — replace "
     "colloquialisms with the formal legal/benefit term (e.g. 'money for new moms' "
-    "→ 'מענק לידה' / 'дотация при рождении'). Keep the user's language.\n\n"
+    "→ 'מענק לידה' / 'дотация при рождении'). Keep the user's main language; "
+    "if it is not Hebrew or Russian, keep that language and add the most likely "
+    "Kol Zchut Hebrew/Russian official term only if it helps retrieval.\n\n"
     "Respond with STRICT JSON ONLY:\n"
     '{"query": "<broadened query>", "reason": "<short>"}'
 )

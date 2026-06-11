@@ -17,13 +17,21 @@ _PHONE = re.compile(r"\b0\d{1,2}[-\s]?\d{7}\b")  # IL phone with optional separa
 
 
 def detect_lang(text: str, default: str = "he") -> str:
-    """Script-based he/ru detection (§0 Lang-detect). Latin/empty → default."""
+    """Detect the answer language route.
+
+    Hebrew and Cyrillic are still explicit because they map to indexed source
+    filters. Other non-empty input returns ``config.AUTO_LANG`` in auto mode:
+    Gemini then identifies the question's main language and answers in it.
+    Empty/ambiguous input falls back to ``default`` for fixed bot messages.
+    """
     he = len(_HEBREW.findall(text or ""))
     ru = len(_CYRILLIC.findall(text or ""))
     if ru > he:
         return "ru"
     if he:
         return "he"
+    if (text or "").strip() and config.ANSWER_LANGUAGE_MODE.lower() == "auto":
+        return config.AUTO_LANG
     return default
 
 

@@ -6,10 +6,17 @@ Telegram-free; returns an :class:`Answer` the bot renders to HTML.
 """
 from __future__ import annotations
 
+import re
+
 import config
 from rag import llm, prompts, retriever
 from rag.llm import _set_thread_id, traceable
 from schema import Answer, Citation, RetrievedChunk
+
+_DISCLAIMER_RE = re.compile(
+    re.escape(prompts.DISCLAIMER_OPEN) + r"(.+?)" + re.escape(prompts.DISCLAIMER_CLOSE),
+    re.DOTALL,
+)
 
 # Prefixes the model emits when it follows the refusal template in prompts._SYSTEM.
 # Detection lets us strip citations + caveat + disclaimer on refusal — a refusal isn't
@@ -20,9 +27,57 @@ _REFUSAL_PREFIXES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _strip_refusal_marker(text: str) -> str | None:
+    head = (text or "").lstrip()
+    if not head.startswith(prompts.REFUSAL_MARKER):
+        return None
+    return head[len(prompts.REFUSAL_MARKER):].lstrip(" :-—").strip()
+
+
 def _is_template_refusal(text: str, lang: str) -> bool:
     head = text.lstrip()
+    if _strip_refusal_marker(head) is not None:
+        return True
     return any(head.startswith(p) for p in _REFUSAL_PREFIXES.get(lang, ()))
+
+
+def _refusal_text(text: str, lang: str) -> str:
+    marked = _strip_refusal_marker(text)
+    if marked is not None:
+        return marked
+    return text
+
+
+def _extract_disclaimer(text: str, lang: str) -> tuple[str, str]:
+    """Split a substantive answer into (body, disclaimer).
+
+    he/ru: disclaimer comes from the static per-language table.
+    auto: pull [DISCLAIMER]...[/DISCLAIMER] out of the body. Fall back to the
+    English disclaimer if the model omitted the tags, so §7 always holds.
+    """
+    if lang != config.AUTO_LANG:
+        return text, prompts.disclaimer(lang)
+    m = _DISCLAIMER_RE.search(text or "")
+    if not m:
+        return text, prompts.disclaimer(config.AUTO_LANG)
+    body = (text[: m.start()] + text[m.end():]).strip()
+    disc = m.group(1).strip()
+    return body, disc or prompts.disclaimer(config.AUTO_LANG)
+
+
+def _localized_empty_refusal(question: str, lang: str, generate_fn) -> str:
+    """Return a no-context refusal. Auto mode spends one small LLM call so the
+    fixed refusal can be in the question's language instead of English/Hebrew."""
+    if lang != config.AUTO_LANG:
+        return prompts.refusal(lang)
+    try:
+        text = generate_fn(
+            prompts.build_refusal_prompt(question, lang),
+            system=prompts.system_prompt(lang),
+        ).strip()
+    except Exception:  # noqa: BLE001 — no-context fallback must never crash
+        return prompts.refusal(lang)
+    return _refusal_text(text, lang) or prompts.refusal(lang)
 
 
 @traceable(name="answer:linear", run_type="chain")
@@ -37,7 +92,7 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None,
 
     docs = retrieve_fn(question, lang)
     if not docs:  # nothing above the floor → refuse, don't invent (§0 #6)
-        return Answer(text=prompts.refusal(lang), lang=lang, citations=[],
+        return Answer(text=_localized_empty_refusal(question, lang, generate_fn), lang=lang, citations=[],
                       disclaimer="", refused=True)
 
     keep = docs[: config.KEEP_K]
@@ -46,15 +101,17 @@ def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None,
         system=prompts.system_prompt(lang),
     ).strip()
     if not text:  # empty generation → treat as refusal, never send blank
-        return Answer(text=prompts.refusal(lang), lang=lang, citations=[],
+        return Answer(text=_localized_empty_refusal(question, lang, generate_fn), lang=lang, citations=[],
                       disclaimer="", refused=True)
 
     if _is_template_refusal(text, lang):
         # Model used the one-sentence refusal template — drop citations/caveat/disclaimer.
-        return Answer(text=text, lang=lang, citations=[], disclaimer="", refused=True)
+        return Answer(text=_refusal_text(text, lang), lang=lang, citations=[],
+                      disclaimer="", refused=True)
 
-    return Answer(text=text, lang=lang, citations=_citations(keep),
-                  disclaimer=prompts.disclaimer(lang), refused=False)
+    body, disc = _extract_disclaimer(text, lang)
+    return Answer(text=body, lang=lang, citations=_citations(keep),
+                  disclaimer=disc, refused=False)
 
 
 def answer_agent(question: str, lang: str,

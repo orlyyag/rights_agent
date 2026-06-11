@@ -75,6 +75,33 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 
 ---
 
+## Language expansion brainstorm — lightweight auto mode
+
+The core indexed corpora remain Hebrew/Russian, but the serving path can now
+answer questions in other Gemini-supported languages without building a native
+index for each language:
+
+1. **Detect answer language separately from source language.** Hebrew and
+   Cyrillic route to `he`/`ru`; other non-empty text routes to `auto`.
+2. **Retrieve across available source languages.** `auto` drops the Chroma
+   `where={"lang": ...}` filter, relying on multilingual Gemini embeddings to
+   find Hebrew/Russian Kol Zchut chunks for an English/French/Spanish/etc.
+   question.
+3. **Generate in the question's main language.** The system prompt instructs
+   Gemini to identify the main natural language of the question and answer or
+   refuse in that same language, strictly grounded in retrieved KZ context.
+4. **Grow native indexes only where the audience justifies it.** Russian remains
+   the first native expansion for the grade. Arabic is the next obvious native
+   corpus because Kol Zchut has Arabic content. Other languages can stay in
+   translation-on-generation mode until usage data says otherwise.
+
+Trade-off: auto mode is cheap and broad, but retrieval quality depends on
+cross-lingual embeddings and fixed bot chrome falls back to English outside
+Hebrew/Russian. Native source-language indexes remain the higher-quality path
+for high-volume languages.
+
+---
+
 ## Brick 1 results (this overnight session)
 
 **All four ingestion modules implemented + tested** (`531f5be` → `b94a272`):

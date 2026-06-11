@@ -11,6 +11,7 @@ import html
 import re
 
 import config
+from bot import session
 from rag import answer as answer_mod
 from rag import guardrails
 from schema import Answer
@@ -26,6 +27,7 @@ PRIVATE = "🔒 זהו דמו פרטי. · Это частный демо-дос
 RATE_MSG = {
     "he": "קיבלתי יותר מדי הודעות. נסו שוב בעוד דקה.",
     "ru": "Слишком много сообщений. Попробуйте через минуту.",
+    "auto": "Too many messages. Try again in a minute.",
 }
 NONTEXT = {
     "he": "אפשר לכתוב את השאלה בטקסט?",
@@ -34,15 +36,18 @@ NONTEXT = {
 ERROR = {
     "he": "מצטער/ת, יש תקלה זמנית. נסו שוב.",
     "ru": "Извините, временная ошибка. Попробуйте ещё раз.",
+    "auto": "Sorry, something went wrong. Please try again.",
 }
 RESET_OK = "🔄 השיחה אופסה. · Диалог сброшен."
 TOO_SHORT = {
     "he": "על השאלה לכלול שלוש מילים לכל הפחות.",
     "ru": "Вопрос должен содержать не менее трёх слов.",
+    "auto": "Please write the question in at least three words.",
 }
 TOO_LONG = {
     "he": "השאלה ארוכה מדי. נסחו אותה בקצרה (עד 500 תווים).",
     "ru": "Вопрос слишком длинный. Сформулируйте короче (до 500 символов).",
+    "auto": "The question is too long. Please keep it under 500 characters.",
 }
 
 # Caveat shown between body and citations, mirroring the official KZ on-site chat:
@@ -50,6 +55,7 @@ TOO_LONG = {
 AI_CAVEAT = {
     "he": "תשובה מבוססת AI. כדאי לוודא את הפרטים בקישורים שלמטה:",
     "ru": "Ответ сгенерирован ИИ. Рекомендуем проверить детали по ссылкам ниже:",
+    "auto": "AI-generated answer. Please verify the details in the links below:",
 }
 
 _LIMITER = guardrails.RateLimiter()
@@ -58,6 +64,10 @@ _BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
 
 def _esc(s: str) -> str:
     return html.escape(s or "")
+
+
+def _localized(table: dict[str, str], lang: str) -> str:
+    return table.get(lang) or table.get(config.AUTO_LANG) or table["he"]
 
 
 def _md_to_telegram_html(escaped_text: str) -> str:
@@ -85,7 +95,7 @@ def render_answer(ans: Answer) -> str:
     """
     parts: list[str] = [_md_to_telegram_html(_esc(ans.text))]
     if ans.citations:
-        caveat = AI_CAVEAT.get(ans.lang, AI_CAVEAT["he"])
+        caveat = _localized(AI_CAVEAT, ans.lang)
         parts.append(f"<i>{_esc(caveat)}</i>")
         parts.append("\n".join(
             f'📄 <a href="{html.escape(c.url, quote=True)}">{_esc(c.title)}</a>'
@@ -106,18 +116,24 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
         return _esc(PRIVATE)
     lang = guardrails.detect_lang(text)
     if not limiter.allow(chat_id):
-        return _esc(RATE_MSG[lang])
+        return _esc(_localized(RATE_MSG, lang))
     if guardrails.too_short(text):
-        return _esc(TOO_SHORT[lang])
+        return _esc(_localized(TOO_SHORT, lang))
     if guardrails.too_long(text):
-        return _esc(TOO_LONG[lang])
+        return _esc(_localized(TOO_LONG, lang))
     # thread_id = the Telegram chat_id, so a single conversation's traces group
     # in LangSmith — across linear or agent path, across many messages.
+    # History (R5) is read BEFORE recording the current turn — the rewrite step
+    # receives prior turns + the current message separately.
     try:
-        return render_answer(answer_fn(text, lang, thread_id=f"chat:{chat_id}"))
+        ans = answer_fn(text, lang, history=session.history(chat_id),
+                        thread_id=f"chat:{chat_id}")
     except TypeError:
         # injected test fakes may not accept kwargs — fall back to positional
-        return render_answer(answer_fn(text, lang))
+        ans = answer_fn(text, lang)
+    session.add_turn(chat_id, "user", text)
+    session.add_turn(chat_id, "assistant", ans.text)
+    return render_answer(ans)
 
 
 # ── async PTB callbacks (telegram imported lazily in telegram_app) ───────────
@@ -136,7 +152,7 @@ async def on_text(update, context) -> None:
         await _send(update, reply)
     except Exception:  # noqa: BLE001 — never crash the process (§0 #6)
         lang = guardrails.detect_lang(getattr(update.effective_message, "text", "") or "")
-        await _send(update, _esc(ERROR[lang]))
+        await _send(update, _esc(_localized(ERROR, lang)))
 
 
 async def on_nontext(update, context) -> None:
@@ -152,6 +168,5 @@ async def on_help(update, context) -> None:
 
 
 async def on_reset(update, context) -> None:
-    from bot import session
     session.reset(update.effective_chat.id)
     await _send(update, _esc(RESET_OK))

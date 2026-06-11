@@ -132,20 +132,24 @@ def node_generate(state: AgentState) -> AgentState:
         system=prompts.system_prompt(lang),
     ).strip()
     if not text:
-        return {"refused": True, "answer_text": prompts.refusal(lang),
+        return {"refused": True, "answer_text": answer_mod._localized_empty_refusal(
+                    state["question"], lang, llm.generate),
                 "citations": [], "disclaimer": ""}
     # Reuse the linear path's refusal-template detection + citation builder so
     # the agent path produces *identical* output for refusals and dedup-by-url.
     if answer_mod._is_template_refusal(text, lang):
-        return {"refused": True, "answer_text": text, "citations": [], "disclaimer": ""}
-    return {"refused": False, "answer_text": text,
+        return {"refused": True, "answer_text": answer_mod._refusal_text(text, lang),
+                "citations": [], "disclaimer": ""}
+    body, disc = answer_mod._extract_disclaimer(text, lang)
+    return {"refused": False, "answer_text": body,
             "citations": answer_mod._citations(keep),
-            "disclaimer": prompts.disclaimer(lang)}
+            "disclaimer": disc}
 
 
 @traceable(name="agent:refuse", run_type="chain")
 def node_refuse(state: AgentState) -> AgentState:
-    return {"refused": True, "answer_text": prompts.refusal(state["lang"]),
+    return {"refused": True, "answer_text": answer_mod._localized_empty_refusal(
+                state["question"], state["lang"], llm.generate),
             "citations": [], "disclaimer": ""}
 
 

@@ -37,3 +37,13 @@ they are locked before either lane starts generating modules.
 ```bash
 pytest -m "not integration"   # pure-logic, LLM-free (no network / API key)
 ```
+
+## Language Behavior
+
+The indexed Kol Zchut sources are still Hebrew/Russian (`lang` metadata in
+Chroma). By default, `KZ_ANSWER_LANGUAGE_MODE=auto` keeps explicit Hebrew and
+Cyrillic/Russian routing, and sends other languages through an unfiltered
+multilingual embedding search. Gemini then identifies the main language of the
+question and answers in that same language from the retrieved Kol Zchut context.
+Set `KZ_ANSWER_LANGUAGE_MODE=he_ru` to restore the original Hebrew fallback for
+Latin/ambiguous text.

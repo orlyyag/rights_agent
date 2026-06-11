@@ -13,6 +13,11 @@ from rag.llm import traceable  # share the optional-langsmith decorator
 from schema import ChunkMeta, RetrievedChunk
 
 _client = None
+# Per-collection cache of which langs actually have chunks. Lazily populated by
+# a metadata-only probe so we don't waste a second vector query on every Russian
+# request when the active collection is Hebrew-only. Keyed by collection name so
+# a sync flip to a new collection re-probes the new one.
+_lang_availability: dict[str, dict[str, bool]] = {}
 
 
 def _get_collection(name: str | None = None):
@@ -23,6 +28,24 @@ def _get_collection(name: str | None = None):
     if _client is None:
         _client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
     return _client.get_collection(name or config.get_active_collection())
+
+
+def _lang_present(col_name: str, col, lang: str) -> bool:
+    """Cheap metadata-only probe: does ``col`` have any chunk with ``lang``?
+
+    Cached per-collection. ``col.get(where=..., limit=1)`` skips the vector index
+    so the probe is far cheaper than a real query. Fails open (True) so a probe
+    error never turns into a silent retrieval miss."""
+    cache = _lang_availability.setdefault(col_name, {})
+    if lang in cache:
+        return cache[lang]
+    try:
+        res = col.get(where={"lang": lang}, limit=1)
+        present = bool(res and res.get("ids"))
+    except Exception:  # noqa: BLE001 — probe failure must not block retrieval
+        present = True
+    cache[lang] = present
+    return present
 
 
 def _distance_to_similarity(distance: float) -> float:
@@ -46,6 +69,17 @@ def _to_chunks(result: dict, lang: str) -> list[RetrievedChunk]:
     return out
 
 
+def _query(col, qvec: list[float], top_k: int, *, where: dict | None = None) -> dict:
+    query_kwargs = {
+        "query_embeddings": [qvec],
+        "n_results": top_k,
+        "include": ["documents", "metadatas", "distances"],
+    }
+    if where is not None:
+        query_kwargs["where"] = where
+    return col.query(**query_kwargs)
+
+
 @traceable(name="retrieve", run_type="retriever")
 def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None,
              relax_filter: bool = False) -> list[RetrievedChunk]:
@@ -55,16 +89,30 @@ def retrieve(query: str, lang: str, *, top_k: int | None = None, collection=None
     ``relax_filter=True`` drops the ``lang`` filter — used by the agent's
     re-retrieve when grade_docs returns ``cross_lingual_thin`` (R2/R4): retrieve
     in the other language and let generate translate per its system prompt.
+    ``lang="auto"`` also drops the filter so questions in languages without a
+    native index can still search the available Hebrew/Russian source corpus.
+    If the same-language query returns no chunks above the floor, retry once
+    without the filter. This keeps Russian usable while the active collection is
+    still Hebrew-only: retrieve Hebrew Kol Zchut pages, answer in Russian.
     """
     top_k = top_k or config.TOP_K
     (qvec,) = llm.embed([query], task_type=config.EMBED_TASK_QUERY)
-    col = collection if collection is not None else _get_collection()
-    query_kwargs = {
-        "query_embeddings": [qvec],
-        "n_results": top_k,
-        "include": ["documents", "metadatas", "distances"],
-    }
-    if not relax_filter:
-        query_kwargs["where"] = {"lang": lang}
-    result = col.query(**query_kwargs)
-    return _to_chunks(result, lang)
+    if collection is None:
+        col_name = config.get_active_collection()
+        col = _get_collection(col_name)
+        # Probe once whether the active collection actually has chunks for this
+        # lang; skip the filter on absence so we don't pay 2x Chroma queries per
+        # request while only Hebrew is indexed.
+        filtered = (
+            not relax_filter
+            and lang in config.LANGS
+            and _lang_present(col_name, col, lang)
+        )
+    else:
+        col = collection
+        filtered = not relax_filter and lang in config.LANGS
+    where = {"lang": lang} if filtered else None
+    chunks = _to_chunks(_query(col, qvec, top_k, where=where), lang)
+    if chunks or where is None:
+        return chunks
+    return _to_chunks(_query(col, qvec, top_k), lang)

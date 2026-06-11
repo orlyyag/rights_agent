@@ -8,8 +8,13 @@ from rag import guardrails
 def test_detect_lang():
     assert guardrails.detect_lang("שלום, מה מגיע לי?") == "he"
     assert guardrails.detect_lang("Здравствуйте, какие права?") == "ru"
-    assert guardrails.detect_lang("hello there") == "he"      # Latin → default
+    assert guardrails.detect_lang("hello there") == config.AUTO_LANG
     assert guardrails.detect_lang("", default="ru") == "ru"
+
+
+def test_detect_lang_can_keep_legacy_he_ru_mode(monkeypatch):
+    monkeypatch.setattr(config, "ANSWER_LANGUAGE_MODE", "he_ru")
+    assert guardrails.detect_lang("hello there") == "he"
 
 
 def test_is_allowed(monkeypatch):

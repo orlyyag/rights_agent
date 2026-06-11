@@ -25,7 +25,7 @@ import config
 from eval.metrics import heuristics as H
 from eval.metrics import judges as J
 from rag import answer as answer_mod
-from rag import retriever
+from rag import retriever, rewrite
 
 GOLDEN_PATH = Path("eval") / "golden_he.jsonl"
 HIT_K = 5
@@ -40,16 +40,22 @@ def _iter_golden(path: Path):
                 yield json.loads(line)
 
 
-def _retrieve_context(question: str, lang: str):
+def _retrieve_context(question: str, lang: str,
+                      history: list[tuple[str, str]] | None = None):
     """Top-K chunks with text — for hit@k AND faithfulness/context-precision.
 
-    Returns (doc_ids, context) where context is a list of {doc_id,title,text}.
+    Two-turn items (T13/R5) condense the follow-up into a standalone query first,
+    mirroring the agent's rewrite step — hit@k on the raw \"ולעצמאים?\" would
+    measure nothing. Returns (doc_ids, context, resolved_query).
     """
-    chunks = retriever.retrieve(question, lang, top_k=HIT_K)
+    resolved = question
+    if history:
+        resolved = rewrite.rewrite_query(question, history).query
+    chunks = retriever.retrieve(resolved, lang, top_k=HIT_K)
     ids = [str(c.meta.pageid) for c in chunks]
     context = [{"doc_id": str(c.meta.pageid), "title": c.meta.title, "text": c.text}
                for c in chunks]
-    return ids, context
+    return ids, context, resolved
 
 
 def _answer_fn(path: str):
@@ -63,10 +69,20 @@ def _answer_fn(path: str):
 def _eval_one(item: dict, answer_fn) -> dict:
     lang = item["lang"]
     q = item["question"]
+    # T13/R5 two-turn cases carry prior turns; only the agent path consumes them
+    # (the linear path has no memory — it sees the raw follow-up and is EXPECTED
+    # to do worse, which is the point of the case).
+    history = [tuple(t) for t in (item.get("history") or [])]
     t0 = time.monotonic()
     # thread_id = the golden item id — lets us filter LangSmith by item ("show
     # me every call for in-001") and group the agent's multi-node trace.
-    a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
+    if history:
+        try:
+            a = answer_fn(q, lang, history=history, thread_id=f"eval:{item['id']}")
+        except TypeError:  # linear answer() takes no history
+            a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
+    else:
+        a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
     latency_s = time.monotonic() - t0
 
     base = {
@@ -80,12 +96,16 @@ def _eval_one(item: dict, answer_fn) -> dict:
         "answer_n_citations": len(a.citations),
         "answer_citation_urls": [c.url for c in a.citations],
     }
+    if item.get("case"):
+        base["case"] = item["case"]   # e.g. follow_up / colloquial_recovery (T13)
 
     if item["category"] == "in_scope":
         # Independent top-K retrieval (the answer path may keep fewer after the
         # floor cut; hit@k wants the standard k). Capture the chunk TEXT too so
         # faithfulness can be judged against what the generator actually saw.
-        retrieved_ids, context = _retrieve_context(q, lang)
+        retrieved_ids, context, resolved_q = _retrieve_context(q, lang, history or None)
+        if resolved_q != q:
+            base["resolved_query"] = resolved_q
         gold = item.get("gold_doc_ids") or item["gold_doc_id"]   # set or scalar
         hit = H.hit_at_k(retrieved_ids, gold, HIT_K)
         cited_urls = [c.url for c in a.citations]
