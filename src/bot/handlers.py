@@ -7,8 +7,11 @@ python-telegram-bot installed — PTB is imported only in ``telegram_app``.
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import config
 from bot import session
@@ -60,6 +63,24 @@ AI_CAVEAT = {
 
 _LIMITER = guardrails.RateLimiter()
 _BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
+
+# ── Concurrency (§0 #5 capacity) ─────────────────────────────────────────────
+# The answer core blocks for seconds (LLM calls). PTB dispatches updates
+# concurrently (concurrent_updates in telegram_app), and on_text offloads
+# build_reply to this pool so the event loop stays free. A per-chat lock keeps
+# one conversation's turns ordered (history coherence) while different chats
+# run in parallel.
+_EXECUTOR = ThreadPoolExecutor(max_workers=config.BOT_WORKERS, thread_name_prefix="answer")
+_chat_locks: dict[int, threading.Lock] = {}
+_locks_guard = threading.Lock()
+
+
+def _chat_lock(chat_id: int) -> threading.Lock:
+    with _locks_guard:
+        lock = _chat_locks.get(chat_id)
+        if lock is None:
+            lock = _chat_locks[chat_id] = threading.Lock()
+        return lock
 
 
 def _esc(s: str) -> str:
@@ -114,26 +135,30 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
 
     if not guardrails.is_allowed(chat_id):
         return _esc(PRIVATE)
-    lang = guardrails.detect_lang(text)
-    if not limiter.allow(chat_id):
-        return _esc(_localized(RATE_MSG, lang))
-    if guardrails.too_short(text):
-        return _esc(_localized(TOO_SHORT, lang))
-    if guardrails.too_long(text):
-        return _esc(_localized(TOO_LONG, lang))
-    # thread_id = the Telegram chat_id, so a single conversation's traces group
-    # in LangSmith — across linear or agent path, across many messages.
-    # History (R5) is read BEFORE recording the current turn — the rewrite step
-    # receives prior turns + the current message separately.
-    try:
-        ans = answer_fn(text, lang, history=session.history(chat_id),
-                        thread_id=f"chat:{chat_id}")
-    except TypeError:
-        # injected test fakes may not accept kwargs — fall back to positional
-        ans = answer_fn(text, lang)
-    session.add_turn(chat_id, "user", text)
-    session.add_turn(chat_id, "assistant", ans.text)
-    return render_answer(ans)
+    # Per-chat critical section: rate-window, history read, answer, history
+    # write happen atomically per conversation. Different chats interleave
+    # freely on the worker pool.
+    with _chat_lock(chat_id):
+        lang = guardrails.detect_lang(text)
+        if not limiter.allow(chat_id):
+            return _esc(_localized(RATE_MSG, lang))
+        if guardrails.too_short(text):
+            return _esc(_localized(TOO_SHORT, lang))
+        if guardrails.too_long(text):
+            return _esc(_localized(TOO_LONG, lang))
+        # thread_id = the Telegram chat_id, so a single conversation's traces group
+        # in LangSmith — across linear or agent path, across many messages.
+        # History (R5) is read BEFORE recording the current turn — the rewrite step
+        # receives prior turns + the current message separately.
+        try:
+            ans = answer_fn(text, lang, history=session.history(chat_id),
+                            thread_id=f"chat:{chat_id}")
+        except TypeError:
+            # injected test fakes may not accept kwargs — fall back to positional
+            ans = answer_fn(text, lang)
+        session.add_turn(chat_id, "user", text)
+        session.add_turn(chat_id, "assistant", ans.text)
+        return render_answer(ans)
 
 
 # ── async PTB callbacks (telegram imported lazily in telegram_app) ───────────
@@ -148,7 +173,10 @@ async def _send(update, text: str) -> None:
 async def on_text(update, context) -> None:
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        reply = build_reply(update.effective_chat.id, update.effective_message.text)
+        # Off the event loop: build_reply blocks for seconds on LLM calls.
+        # 20 users → 20 pool threads in flight, the loop keeps dispatching.
+        reply = await asyncio.get_running_loop().run_in_executor(
+            _EXECUTOR, build_reply, update.effective_chat.id, update.effective_message.text)
         await _send(update, reply)
     except Exception:  # noqa: BLE001 — never crash the process (§0 #6)
         lang = guardrails.detect_lang(getattr(update.effective_message, "text", "") or "")

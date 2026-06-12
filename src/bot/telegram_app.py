@@ -14,7 +14,14 @@ def build_app():
     """Construct the PTB Application with all handlers registered."""
     from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    # concurrent_updates: PTB awaits each handler to completion before taking the
+    # next update otherwise — 20 users would form a serial queue behind one
+    # ~7s answer. With it, updates dispatch concurrently; the blocking answer
+    # core itself runs on handlers._EXECUTOR (see on_text).
+    app = (Application.builder()
+           .token(config.TELEGRAM_BOT_TOKEN)
+           .concurrent_updates(True)
+           .build())
     app.add_handler(CommandHandler("start", handlers.on_start))
     app.add_handler(CommandHandler("help", handlers.on_help))
     app.add_handler(CommandHandler("reset", handlers.on_reset))

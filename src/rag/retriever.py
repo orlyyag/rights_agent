@@ -7,12 +7,18 @@ and unit-testable with a fake collection.
 """
 from __future__ import annotations
 
+import threading
+
 import config
 from rag import llm
 from rag.llm import traceable  # share the optional-langsmith decorator
 from schema import ChunkMeta, RetrievedChunk
 
 _client = None
+# Concurrent first-requests (20 cold parallel users) must not construct
+# PersistentClient twice against the same path — chroma's bindings race and
+# fail with "Could not connect to tenant default_tenant". Double-checked lock.
+_client_guard = threading.Lock()
 # Per-collection cache of which langs actually have chunks. Lazily populated by
 # a metadata-only probe so we don't waste a second vector query on every Russian
 # request when the active collection is Hebrew-only. Keyed by collection name so
@@ -26,7 +32,9 @@ def _get_collection(name: str | None = None):
     import chromadb
 
     if _client is None:
-        _client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
+        with _client_guard:
+            if _client is None:
+                _client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
     return _client.get_collection(name or config.get_active_collection())
 
 

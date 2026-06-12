@@ -196,3 +196,107 @@ def test_build_reply_rate_limited(monkeypatch):
     handlers.build_reply(9, "שלום", answer_fn=ans, rate=rl)   # uses the one allowance
     out = handlers.build_reply(9, "שלום", answer_fn=ans, rate=rl)
     assert "יותר מדי" in out
+
+
+# ── Concurrency (§0 #5 capacity: 20 parallel users) ──────────────────────────
+
+def _slow_answer(delay: float):
+    import time as _t
+
+    def fa(q, l, **kw):
+        _t.sleep(delay)
+        return Answer(text="ok", lang=l, citations=[], disclaimer="")
+    return fa
+
+
+def test_build_reply_parallel_across_chats(monkeypatch):
+    """20 different chats must not serialize: wall clock ≈ one answer, not 20."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+    fa = _slow_answer(0.4)
+    t0 = time.monotonic()
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        outs = list(ex.map(
+            lambda cid: handlers.build_reply(10_000 + cid, "מה מגיע לי אחרי לידה",
+                                             answer_fn=fa, rate=rl),
+            range(20)))
+    wall = time.monotonic() - t0
+    assert all("ok" in o for o in outs)
+    # serial would be ≥ 8.0s; parallel one-deep is ~0.4s. Generous CI margin:
+    assert wall < 2.0, f"20 chats serialized: wall={wall:.2f}s"
+
+
+def test_build_reply_same_chat_serialized(monkeypatch):
+    """Two messages in the SAME chat must not interleave history writes."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    chat_id = 31337
+    session.reset(chat_id)
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+    fa = _slow_answer(0.15)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        list(ex.map(
+            lambda q: handlers.build_reply(chat_id, q, answer_fn=fa, rate=rl),
+            ["שאלה ראשונה שלי כאן", "שאלה שנייה שלי כאן"]))
+    hist = session.history(chat_id)
+    roles = [r for r, _ in hist]
+    # atomic per-turn pairs — never user,user,assistant,assistant
+    assert roles == ["user", "assistant", "user", "assistant"], roles
+    session.reset(chat_id)
+
+
+def test_on_text_offloads_blocking_core(monkeypatch):
+    """on_text must keep the event loop free while build_reply blocks."""
+    import asyncio
+
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    monkeypatch.setattr(handlers.answer_mod, "answer_default", _slow_answer(0.3))
+
+    class _Msg:
+        text = "מה מגיע לי אחרי לידה"
+
+        async def reply_text(self, text, **kw):
+            self.sent = text
+
+    class _Chat:
+        def __init__(self, cid):
+            self.id = cid
+
+    class _Update:
+        def __init__(self, cid):
+            self.effective_message = _Msg()
+            self.effective_chat = _Chat(cid)
+
+    class _Bot:
+        async def send_chat_action(self, **kw):
+            pass
+
+    class _Ctx:
+        bot = _Bot()
+
+    async def main():
+        import time
+        ups = [_Update(20_000 + i) for i in range(5)]
+        t0 = time.monotonic()
+        await asyncio.gather(*(handlers.on_text(u, _Ctx()) for u in ups))
+        return time.monotonic() - t0, ups
+
+    wall, ups = asyncio.run(main())
+    assert all(getattr(u.effective_message, "sent", "") for u in ups)
+    # serial-on-loop would be ≥ 1.5s; offloaded is ~0.3s
+    assert wall < 1.0, f"event loop was blocked: wall={wall:.2f}s"
+
+
+def test_app_enables_concurrent_updates(monkeypatch):
+    """PTB must dispatch updates concurrently, or the offload never gets a chance."""
+    import pytest
+    pytest.importorskip("telegram")
+    from bot import telegram_app
+
+    monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456:TEST-token")
+    app = telegram_app.build_app()
+    assert app.concurrent_updates and app.concurrent_updates > 1
