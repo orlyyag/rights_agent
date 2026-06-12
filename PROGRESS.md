@@ -3,8 +3,9 @@
 Status tracker for the Kol Zchut Rights Assistant. Updated as bricks land.
 PLAN.md is the authoritative spec; this is the executive summary.
 
-**Deadline:** Saturday 2026-06-13. **Today:** 2026-06-10 (Wed).
+**Deadline:** Saturday 2026-06-13. **Last updated:** 2026-06-12 (Fri) — hardening day done; see the final section.
 **Demo anchor:** `git checkout v0.1-tier0-demo` always returns to a working bot.
+**Live state:** bot running on today's code (concurrency + prompt fixes) · active collection `kz_v3` (bilingual, recall-gated) · verified numbers in REPORT/SLIDES.
 
 ---
 
@@ -67,11 +68,11 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 | # | Brick | Status | Notes |
 |---|---|---|---|
 | 1 | **Ingestion pipeline (HE)** — mediawiki + acquire + clean + chunk; tables→Markdown closes R1 | ✅ **Done · cutover complete** (pointer flipped to `kz_pipeline_he`, 64,532 vectors) | See "Brick 1 results" + "Spot-check 2×2" below |
-| 2 | **Russian native index** — same pipeline against `/w/ru/api.php` | Pending | Unblocks bilingual demo (contribution #2) |
+| 2 | **Russian native index** — same pipeline against `/w/ru/api.php` | ✅ **Done** — bilingual `kz_v3` active (104,315 chunks he+ru), ru citation policy (`9911ede`) | RU golden set still needs human-verified rows (R8, T16) |
 | 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | ✅ **Modules done · opt-in via `KZ_ANSWER_PATH=agent`** · ⚠️ spot-check shows no clear win on pipeline; keep linear default | See "Brick 3 results" + "Spot-check 2×2" below |
-| 4 | **Full evals** — RAGAS + LLM-judge + hit@k on the agent path; bilingual report | Partial (HE baseline done) | RU golden set needs human-verified rows from ru-native pages (R8, T16) |
-| 5 | **Update automation** — `scripts/sync.py` (manifest-diff → pipeline → blue-green flip) + scheduled run | Pending | §2 DoD: "change page → re-sync → answer reflects" |
-| 6 | **A2 latency improvement** — offline judge + embedding-based grade; baseline → optimized | Pending | Baseline is **3.50s mean**, target <2s |
+| 4 | **Full evals** — heuristics + cross-provider LLM judge, human-calibrated; refusal split; faithfulness vs retrieved context | ✅ **HE done + verified** (89.5% correctness, 83.3% hit@5 — see "Hardening day") | RU golden set needs human-verified rows from ru-native pages (R8, T16); agent-path eval parked by choice |
+| 5 | **Update automation** — `scripts/sync.py` (manifest-diff → incremental build → smoke + **ANN-recall gate** → blue-green flip) | ✅ **Done** (`ed420cf` + gate `dca07bd`) | §2 DoD demo: change page → `python scripts/sync.py` → answer reflects, no restart |
+| 6 | **A2 "improve one dimension"** | ✅ **Resolved per grill decision**: A2 = the documented eval-repair quality delta (27.5%→89.5%); latency row in REPORT rewritten honestly (median 8.7s vs <2s KPI, not gamed) | Live-path latency optimization deliberately not pursued |
 
 ---
 
@@ -482,6 +483,18 @@ answered post-index-fix, generic-definition anchoring (net gain vs refusal).
 
 Suite: **179 passed**. REPORT.md + SLIDES.md carry the verified numbers.
 
-⚠️ **Bot restart pending**: the running bot process predates today's fixes —
-restart with `scripts/run_bot.sh` before the demo to pick up concurrency +
-prompt changes (one command, sessions reset).
+✅ **Bot restarted on today's code** (2026-06-12, pid via `scripts/status_bot.sh`) —
+serving linear path over `kz_v3` with the concurrency + prompt fixes live.
+
+### Remaining before submission (Sat 2026-06-13)
+
+**Needs Orly (human-only):**
+- [ ] Create `github.com/orlyyag/rights_agent` (private, empty) → then CC wires
+  the remote + pushes (REPORT already cites that URL). Only off-laptop backup.
+- [ ] Stakeholder interview notes → REPORT §2 (15% of grade)
+- [ ] Business-KPI estimates for REPORT §4 (productivity / reach / savings — label as estimates)
+- [ ] Demo video + pitch run-through (SLIDES.md is current with verified numbers)
+- [ ] Optional: RU golden set (~20 hand-verified questions) for the bilingual eval claim
+
+**Pre-demo runbook:** `caffeinate -d -i &` · `scripts/status_bot.sh` ·
+rollback anchors: `git checkout v0.1-tier0-demo` / `echo kz_v2 > data/active_collection`.
