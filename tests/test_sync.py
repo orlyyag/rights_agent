@@ -92,6 +92,9 @@ def _patch_pointer(monkeypatch, tmp_path, active="kz_v1"):
     ptr = tmp_path / "active_collection"
     ptr.write_text(active + "\n", encoding="utf-8")
     monkeypatch.setattr(config, "ACTIVE_POINTER", ptr)
+    # keep unit tests LLM-free: the live ANN-recall gate is exercised by its
+    # own tests below; default it to pass here
+    monkeypatch.setattr(sync, "recall_gate_ok", lambda dst, log=print: True)
 
 
 def test_sync_noop_when_nothing_changed(monkeypatch, tmp_path):
@@ -187,3 +190,108 @@ def test_sync_no_flip_flag(monkeypatch, tmp_path):
     assert res.flipped is False
     assert config.get_active_collection() == "kz_v1"   # pointer untouched
     assert "kz_v2" in client.cols                       # but the build happened
+
+
+# ── ANN recall gate (the kz_v2 incident) ─────────────────────────────────────
+class _Report:
+    def __init__(self, queries, failed):
+        self.queries = queries
+        self.failed = failed
+
+    @property
+    def ok(self):
+        return self.queries > 0 and not self.failed
+
+
+def _gate_env(monkeypatch):
+    monkeypatch.setattr(sync.llm, "embed",
+                        lambda texts, task_type: [[1.0, 0.0]] * len(texts))
+
+
+def test_recall_gate_blocks_on_holes(monkeypatch):
+    _gate_env(monkeypatch)
+    logs = []
+    ok = sync.recall_gate_ok(_FakeCol("x"), log=logs.append,
+                             check_fn=lambda col, vecs: _Report(3, [(0, 0.24, 0.33)]))
+    assert ok is False
+    assert any("FAILED" in m for m in logs)
+
+
+def test_recall_gate_passes_on_clean_graph(monkeypatch):
+    _gate_env(monkeypatch)
+    ok = sync.recall_gate_ok(_FakeCol("x"), log=lambda *a: None,
+                             check_fn=lambda col, vecs: _Report(3, []))
+    assert ok is True
+
+
+def test_recall_gate_skips_without_goldens(monkeypatch):
+    monkeypatch.setattr(sync, "_GOLDEN_FILES", ())
+    logs = []
+    ok = sync.recall_gate_ok(_FakeCol("x"), log=logs.append,
+                             check_fn=lambda col, vecs: _Report(0, []))
+    assert ok is True
+    assert any("SKIPPED" in m for m in logs)
+
+
+def test_recall_gate_fails_open_on_infra_error(monkeypatch):
+    monkeypatch.setattr(sync.llm, "embed",
+                        lambda texts, task_type: (_ for _ in ()).throw(RuntimeError("api down")))
+    logs = []
+    ok = sync.recall_gate_ok(_FakeCol("x"), log=logs.append)
+    assert ok is True  # infra error ≠ recall hole; flip proceeds with a loud log
+    assert any("errored" in m for m in logs)
+
+
+def test_sync_recall_gate_failure_blocks_flip(monkeypatch, tmp_path):
+    _patch_pointer(monkeypatch, tmp_path, active="kz_v1")
+    monkeypatch.setattr(sync, "recall_gate_ok", lambda dst, log=print: False)
+    old = _FakeCol("kz_v1", [_row("a", "he", 1), _row("b", "he", 2)])
+    client = _FakeClient([old])
+    monkeypatch.setattr(sync, "chunks_for_pages", lambda lang, pageids: [])
+    res = sync.sync(("he",), client=client, acquire_fn=lambda l: _diff(changed=[2]),
+                    log=lambda *a: None)
+    assert res.flipped is False
+    assert config.get_active_collection() == "kz_v1"
+
+
+def test_recall_gate_check_math():
+    """recall_gate.check: ANN matching brute force passes; a hole fails."""
+    from ingest import recall_gate
+
+    class _Col:
+        def __init__(self, ann_dists):
+            self.ann = ann_dists
+
+        def get(self, *, limit, offset, include):
+            if offset:
+                return {"ids": []}
+            # 3 unit vectors: identical, orthogonal, opposite to query [1,0]
+            return {"ids": ["a", "b", "c"],
+                    "embeddings": [[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]]}
+
+        def query(self, *, query_embeddings, n_results, include):
+            return {"distances": [self.ann[:n_results]]}
+
+    q = [[1.0, 0.0]]
+    # true sorted distances: 0.0, 1.0, 2.0
+    honest = recall_gate.check(_Col([0.0, 1.0, 2.0]), q, k=3)
+    assert honest.ok
+    holey = recall_gate.check(_Col([1.0, 2.0, 2.0]), q, k=3)  # misses the 0.0 NN
+    assert not holey.ok and holey.failed[0][1] == 0.0
+
+
+def test_index_get_or_create_sets_explicit_hnsw_params():
+    from ingest import index as index_mod
+
+    captured = {}
+
+    class _Cl:
+        def get_or_create_collection(self, name, metadata=None):
+            captured.update(metadata or {})
+            return _FakeCol(name)
+
+    index_mod.get_or_create("kz_test", client=_Cl())
+    assert captured["hnsw:space"] == "cosine"
+    assert captured["hnsw:construction_ef"] >= 200
+    assert captured["hnsw:search_ef"] >= 200
+    assert captured["hnsw:M"] >= 32

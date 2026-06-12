@@ -19,12 +19,28 @@ def _batched(items: list[Chunk], n: int) -> Iterator[list[Chunk]]:
         yield items[i : i + n]
 
 
+# Explicit HNSW build/search params (the kz_v2 incident, 2026-06-11): a
+# collection built with chroma defaults developed query-dependent recall holes —
+# true nearest neighbors at cosine-dist ~0.24 never surfaced while ~0.33 came
+# back instead (eval/failure_analysis.txt, "V2 RE-RUN FLIP ANALYSIS"). Higher
+# construction_ef/M build a denser, better-connected graph; higher search_ef
+# explores enough candidates at query time. Costs: one-time build CPU + a few
+# ms per query — nothing against a 7s answer. ingest.recall_gate verifies every
+# new collection before the blue-green flip.
+HNSW_PARAMS = {
+    "hnsw:space": "cosine",
+    "hnsw:construction_ef": 200,
+    "hnsw:search_ef": 200,
+    "hnsw:M": 32,
+}
+
+
 def get_or_create(name: str, *, client=None):
     """Open/create a cosine-space collection. Lazy — needs chromadb installed."""
     import chromadb
 
     client = client or chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-    return client.get_or_create_collection(name, metadata={"hnsw:space": "cosine"})
+    return client.get_or_create_collection(name, metadata=dict(HNSW_PARAMS))
 
 
 def build_collection(chunks: Iterable[Chunk], name: str, *, collection=None,

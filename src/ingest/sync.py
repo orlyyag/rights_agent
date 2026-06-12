@@ -9,18 +9,21 @@ One cycle = acquire (manifest-diff) → build ``kz_v{N+1}`` → smoke → flip p
    EXCEPT chunks of changed/deleted pages. No re-embedding of unchanged content,
    so a typical sync costs cents, not the ~$2.40 full build.
 3. Only the changed pages run clean → chunk → embed into the new collection.
-4. A smoke check guards the flip; the previous collection is retained so
-   rollback is one line: ``echo <old-name> > data/active_collection``.
+4. A smoke check + an ANN-recall gate guard the flip; the previous collection
+   is retained so rollback is one line: ``echo <old-name> > data/active_collection``.
 
 The bot reads the pointer per-request (R7), so the flip needs no restart.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import config
-from ingest import acquire, chunk, clean, index
+from ingest import acquire, chunk, clean, index, recall_gate
+from rag import llm
 
 _VERSION_RE = re.compile(rf"^{re.escape(config.COLLECTION_PREFIX)}(\d+)$")
 _COPY_BATCH = 500
@@ -92,6 +95,47 @@ def smoke_ok(dst, *, min_count: int = 1) -> bool:
         return False
 
 
+_GOLDEN_FILES = ("eval/golden_he.jsonl", "eval/golden_ru.jsonl")
+
+
+def _golden_questions() -> list[str]:
+    out: list[str] = []
+    for path in _GOLDEN_FILES:
+        p = Path(path)
+        if not p.exists():
+            continue
+        for line in p.read_text(encoding="utf-8").splitlines():
+            item = json.loads(line)
+            if item.get("category") == "in_scope":
+                out.append(item["question"])
+    return out
+
+
+def recall_gate_ok(dst, *, log=print, check_fn=None) -> bool:
+    """ANN-vs-true-NN gate (the kz_v2 incident): a graph with recall holes must
+    never get flipped to. Fails CLOSED on detected holes; fails OPEN (with a
+    loud log line) on infrastructure errors — an embed-API hiccup is not
+    evidence of a bad graph. ``check_fn`` is injectable for tests."""
+    try:
+        questions = _golden_questions()
+        if not questions:
+            log("Recall gate: no golden questions found — SKIPPED.")
+            return True
+        vecs = llm.embed(questions, task_type=config.EMBED_TASK_QUERY)
+        rep = (check_fn or recall_gate.check)(dst, vecs)
+        if rep.ok:
+            log(f"Recall gate: {rep.queries} queries, ANN == true-NN on all ✓")
+            return True
+        worst = max(rep.failed, key=lambda f: f[-1])
+        log(f"✗ Recall gate FAILED on {len(rep.failed)}/{rep.queries} queries "
+            f"(worst hole: gap {worst[-1]:.4f}; true top-1 {worst[1]:.4f}, "
+            f"ANN top-1 {worst[2]:.4f}).")
+        return False
+    except Exception as e:  # noqa: BLE001 — infra error ≠ recall hole
+        log(f"Recall gate errored ({e!r}) — flip proceeds; check manually.")
+        return True
+
+
 def sync(langs: tuple[str, ...] = ("he",), *, client=None,
          acquire_fn=acquire.acquire, flip: bool = True,
          log=print) -> SyncResult:
@@ -139,6 +183,11 @@ def sync(langs: tuple[str, ...] = ("he",), *, client=None,
     if not smoke_ok(dst):
         log(f"✗ Smoke check FAILED — pointer NOT flipped; "
             f"'{res.old_collection}' stays active.")
+        return res
+
+    if not recall_gate_ok(dst, log=log):
+        log(f"✗ Pointer NOT flipped; '{res.old_collection}' stays active. "
+            f"The new graph has ANN recall holes — rebuild before flipping.")
         return res
 
     if flip:
