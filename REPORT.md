@@ -1,7 +1,7 @@
 # Kol Zchut Rights Assistant — Final Project Report
 
 **Course:** Generative AI Systems Design & Implementation (Google × Reichman University)
-**Team:** Orli Yag · orli.yag@gmail.com (solo submission)
+**Team:** Orly Yagudayev · orli.yag@gmail.com (solo submission)
 **Repo:** https://github.com/orlyyag/rights_agent (private) · **Submission date:** 2026-06-13
 
 > This is the graded submission document, structured to the 5 rubric sections. Architecture
