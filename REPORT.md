@@ -1,8 +1,8 @@
 # Kol Zchut Rights Assistant — Final Project Report
 
 **Course:** Generative AI Systems Design & Implementation (Google × Reichman University)
-**Team:** Student 1 — `<name>` · `<email>` | Student 2 — `<name>` · `<email>`
-**Repo:** `<github link>` · **Submission date:** 2026-06-13
+**Team:** Orli Yag · orli.yag@gmail.com (solo submission)
+**Repo:** https://github.com/orlyyag/rights_agent (private) · **Submission date:** 2026-06-13
 
 > This is the graded submission document, structured to the 5 rubric sections. Architecture
 > details live in [PLAN.md](PLAN.md) (§4, §10) and are summarized here. Markers:
@@ -201,7 +201,7 @@ latency/cost **before → after** with the quality trade-off.
 
 **Screenshots / Code Snippets:** 🖊️ HUMAN — Telegram he + ru answer, a follow-up, a refusal.
 
-**Code repository:** `<github link>`
+**Code repository:** https://github.com/orlyyag/rights_agent (private)
 
 ---
 

@@ -63,7 +63,6 @@ GEN_THINKING_BUDGET = 0                             # low/zero live thinking (Q2
 CONTACT_EMAIL = _env("KZ_CONTACT_EMAIL")
 
 # ── Data source + languages (§0 #2) ─────────────────────────────────────────
-SOURCE = _env("KZ_SOURCE", "corpus")               # "corpus" | "pipeline"
 # Indexed/source languages. Answer-language auto mode below can answer in more
 # languages than the source corpus contains by letting Gemini translate from the
 # retrieved Hebrew/Russian context.

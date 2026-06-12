@@ -48,10 +48,10 @@ config.py    # frozen seam #1: models/dims, ACTIVE-collection pointer, threshold
 schema.py    # frozen seam #3: ChunkMeta — the Chroma metadata contract (ingest writes, retriever reads)
 src/
   rag/       llm.py (frozen seam #2: the one Gemini door) · retriever · graph · prompts · guardrails
-  ingest/    mediawiki · acquire · clean · chunk · index
+  ingest/    mediawiki · acquire · clean · chunk · index · sync · recall_gate
   bot/       telegram_app · handlers · session
-  eval/      run_ragas · run_judge · report
-scripts/     sync.py
+  eval/      run_eval · judge_llm · metrics (heuristics + judges + calibration) · report
+scripts/     sync.py · rebuild_index.py · stress_test.py
 tests/
 ```
 
