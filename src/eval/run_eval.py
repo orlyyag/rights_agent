@@ -16,6 +16,7 @@ Output filenames carry the path so both runs coexist:
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import sys
 import time
@@ -76,11 +77,10 @@ def _eval_one(item: dict, answer_fn) -> dict:
     t0 = time.monotonic()
     # thread_id = the golden item id — lets us filter LangSmith by item ("show
     # me every call for in-001") and group the agent's multi-node trace.
-    if history:
-        try:
-            a = answer_fn(q, lang, history=history, thread_id=f"eval:{item['id']}")
-        except TypeError:  # linear answer() takes no history
-            a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
+    # Signature check, not try/except: probing with an unsupported kwarg makes
+    # the @traceable wrapper log a binding failure for every two-turn item.
+    if history and "history" in inspect.signature(answer_fn).parameters:
+        a = answer_fn(q, lang, history=history, thread_id=f"eval:{item['id']}")
     else:
         a = answer_fn(q, lang, thread_id=f"eval:{item['id']}")
     latency_s = time.monotonic() - t0

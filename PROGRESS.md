@@ -448,3 +448,40 @@ caffeinate -d -i &              # critical — laptop sleep kills the demo
 scripts/status_bot.sh           # ✓ Bot is running …
 # tail -f data/bot.log in another terminal for live monitoring
 ```
+
+---
+
+## Hardening day (2026-06-12) — grill fixes + two regressions root-caused
+
+Failure analysis of the v2 re-run (correctness 91.2%→83.8%) found **zero judge
+variance and zero content-change effects** — two real regressions had shipped
+(full evidence: `eval/failure_analysis.txt`, "V2 RE-RUN FLIP ANALYSIS"):
+
+| Fix | Commit | Proof |
+|---|---|---|
+| **Concurrency (grill #1)**: PTB `concurrent_updates=1` serialized all users behind one ~7s answer; `on_text` blocked the event loop; chroma lazy-init raced on cold parallel starts | `701e811` | fake-mode stress ×20.0 speedup; LIVE 20 users: 20/20 replies, 0 errors, ×12.7 vs serial (`scripts/stress_test.py`) |
+| **kz_v2 ANN recall holes**: true NNs at dist 0.2365 never surfaced (0.3269 returned); old index had 2 holes of its own — every default-param build rolled a lottery | `dca07bd` | kz_v3 rebuilt (104,315 chunks copied, no re-embed), explicit HNSW params, brute-force recall gate green 42/42, in-022 retrieval back to exact pre-incident ranking. Gate demonstrably works: it blocked the first flip attempt |
+| **Prompt regression (ed420cf)**: re-introduced over-refusal (in-020) + dropped eligibility hedging (in-005), proven by A/B at temp 0 on identical context | `f5d241a` | in-020 answers 3/3; in-005 hedged + focused + judge 1.0×3; adversarial 8/8 hold |
+| Cleanup: REPORT identity/links, dead `KZ_SOURCE`, stale README eval layout | `74604ea` | — |
+
+### Verified eval — kz_v3 + fixed prompt (clean idle run, `eval/run_v3.log`)
+
+| Metric | v2-broken run | **kz_v3 + prompt fix** |
+|---|---|---|
+| hit@5 / recall@5 / MRR | 81.0% / 81.0% / 0.59 | **83.3% (35/42) / 83.3% / 0.59** — best ever |
+| answer_correctness | 83.8% (31/37) | **89.5% (34/38)** — 4 more answered + 3 more correct than the old "91.2%" run (31/34) |
+| faithfulness | 99.3% | **99.5%** |
+| adversarial refusal | 8/8 | **8/8** |
+| false refusals | 2/42 | **1/42** (in-032 chunking gap only) |
+| latency (idle) | contaminated | median **8.71s** · mean 8.51s · p95 10.55s |
+| errors | 1 harness wart | **0** (history-kwarg wart fixed) |
+
+Residual flips spot-read per the grill rule: in-013 = judge variance (re-judge
+returns correct; inside the documented 4fp/2fn noise band); in-003 = newly
+answered post-index-fix, generic-definition anchoring (net gain vs refusal).
+
+Suite: **179 passed**. REPORT.md + SLIDES.md carry the verified numbers.
+
+⚠️ **Bot restart pending**: the running bot process predates today's fixes —
+restart with `scripts/run_bot.sh` before the demo to pick up concurrency +
+prompt changes (one command, sessions reset).

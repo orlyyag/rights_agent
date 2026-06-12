@@ -176,3 +176,130 @@ BOT ANSWER (first 400 chars, refused=False):
 * בני זוג של חיילי מילואים, לרבות ידועים בציבור, נחשבים כבני זוג לעניין הזכאות למענק כספי לשאירים, במקרה של חייל מילואים שנפגע או נהרג לפני שנת 1999 עקב שירותו. 
 * הזכאות במקרה זה ניתנת למי שהיו בני הזוג של החיילים ביום מותם, והיא נשמרת גם אם הם נישאו לאחר מכן.
 
+
+
+############################################################
+###### V2 RE-RUN FLIP ANALYSIS (2026-06-11, post-grill) #####
+############################################################
+
+Question: correctness 91.2% (n=34, kz_pipeline_he) -> 83.8% (n=37, kz_v2).
+Grill task #2: classify the three downward flips as judge-variance vs real
+content change from the 51 re-fetched pages.
+
+VERDICT: neither. Zero judge variance, zero content-change effects.
+All three flips trace to TWO REAL REGRESSIONS that shipped between the runs.
+
+────────────────────────────────────────────────────────────
+REGRESSION A — kz_v2's HNSW index has recall holes
+────────────────────────────────────────────────────────────
+in-022 (ביטול עסקה טלפונית, בת 76): correct -> incorrect, hit@5 True -> False.
+
+Evidence chain:
+- Gold doc 5110 was NOT among the 51 re-fetched pages (raw mtime Jun 10).
+  Its 17 chunks were copied into kz_v2 verbatim, embeddings included.
+- Same query vector against both collections (live test):
+    kz_pipeline_he (lang=he): 5110 at ranks 2-4, distance 0.2365
+    kz_v2 (lang=he AND unfiltered): nothing below 0.3269; 5110 absent from top-10
+- Brute-force cosine over 5110's stored kz_v2 embeddings: best true distance
+  0.2365 — the vectors ARE in the collection at the winning distance; the
+  ANN graph never surfaces them. Not the lang filter (unfiltered query
+  identical). Not the embedder (rag/llm.py unchanged between runs).
+- Self-NN probe (20 random chunks, query-by-own-embedding): 20/20 on both
+  collections — data intact, holes are query-dependent graph pathology,
+  introduced by the copy-forward build (build_bilingual.py / sync.copy_forward
+  upsert order), not by data loss.
+
+Blast-radius scan (all 42 in-scope queries, kz_v2 ANN top-1 vs
+kz_pipeline_he ANN top-1): kz_v2 worse on exactly 1/42 — in-022 itself
+(0.2332 -> 0.3269). The v2 hole is real but localized on this golden set.
+
+THE OLD INDEX HAD HOLES TOO. in-003 and in-026's gold chunks are
+byte-identical in both collections (true best dist 0.2690 / 0.2403), but
+kz_pipeline_he's HNSW returned only >=0.3231 neighbors for those queries —
+whole true-NN neighborhoods missed — while kz_v2 finds them correctly.
+So the old run's "justified refusals" on in-003/in-026 were index
+artifacts, and the v2 "gains" on them are REAL fixes. Every collection
+build (default HNSW params — only hnsw:space=cosine set; chromadb 1.5.9,
+3072-dim vectors) rolls a new recall lottery: old index >=2 holes, v2
+index 1 hole, on this golden set. Hole signature everywhere: true best
+~0.24-0.27 missed, ~0.32-0.33 returned instead.
+
+Fix: build collections with explicit HNSW params (raise
+hnsw:construction_ef / hnsw:search_ef, consider M=32), and add a
+brute-force-vs-ANN recall gate to the sync smoke check (sample queries,
+require sampled recall@5 = 100% against stored embeddings) so a
+blue-green flip can never ship a degraded graph again.
+
+────────────────────────────────────────────────────────────
+REGRESSION B — ed420cf prompt rework regressed Hebrew generation
+────────────────────────────────────────────────────────────
+The auto-language-mode prompt rework ([REFUSAL] marker + refusal-template
+rewording + language-instruction insertion) shifted behavior on borderline
+items. GEN_TEMPERATURE=0 throughout — these are deterministic, not sampling.
+
+in-020 (תפקידים בשירות לאומי לנערות אוטיסטיות): correct -> FALSE REFUSAL.
+- Retrieved context byte-identical between runs (same 5 chunks, same hashes).
+- A/B at temp 0 on the same context:
+    old prompt (65b76d8): answers 2/2
+    new prompt (HEAD):    refuses 3/3
+- This re-introduces the over-refusal class the relaxed-prompt fix (50da302)
+  had eliminated. False refusals: 1/40 -> 2/42.
+
+in-005 (תג חניה לחולה דמנציה): correct -> incorrect.
+- Retrieved context byte-identical between runs.
+- The new prompt generates a different answer from the same context: the old
+  answer hedged "עשויים להיות זכאים"; the new one flatly asserts
+  "זכאים לקבל תג חניה" — unconditional entitlement, contradicting the
+  gold's criteria-based eligibility (60%+ disability / wheelchair / etc.).
+- Judge stability test (gpt-4.1, 3 runs each): old answer 1.0/1.0/1.0,
+  new answer 0.0/0.0/0.0 with {"contradicts": true}. The judge is stable
+  and RIGHT — this is a genuine generation regression, not judge noise.
+
+────────────────────────────────────────────────────────────
+Decomposition of 91.2% -> 83.8% (was "mostly set composition" — wrong)
+────────────────────────────────────────────────────────────
+- in-022: Regression A (v2 index recall hole)         -1 correct
+- in-020: Regression B (prompt over-refusal)          -1 answered-correct
+- in-005: Regression B (prompt dropped hedging)       -1 correct
+- in-026: old-index hole FIXED by v2 -> now answered,
+  but answer is wrong (real retrieval gain, new
+  generation miss)                                    -1 (new incorrect in n)
+- in-042: new question, HONEST retrieval miss — gold
+  doc 1521's best chunk at true dist 0.2808, five
+  genuinely closer chunks at 0.2644-0.2755 fill
+  top-5 (NOT an index hole; chunking-gap class,
+  like in-032)                                        -1
+- in-003 (old-index hole fixed, now correct),
+  in-021 (judge/generation upward flip),
+  in-041 (new question, correct)                      +3
+Net: 31/34 -> 31/37 = 83.8%.
+
+Also noted in run_v2.log: in-041 logs "unexpected keyword argument 'history'"
+(run_eval passes history=, linear answer() doesn't take it; TypeError fallback
+fires, LangSmith binding warning). Eval-harness wart, answer unaffected.
+
+────────────────────────────────────────────────────────────
+RESOLUTION (2026-06-12) — all three downward flips fixed & verified
+────────────────────────────────────────────────────────────
+Fixes: explicit HNSW params + brute-force recall gate (dca07bd, kz_v3
+rebuilt + flipped, gate green 42/42, in-022 retrieval back to the exact
+pre-incident ranking) and prompt repair (f5d241a: partial-coverage rule,
+conditional-eligibility hedging, on-question scope; validated on the stored
+failing contexts; adversarial 8/8 held).
+
+Full re-run (eval/run_v3.log, clean idle):
+  hit@5 83.3% (35/42, best ever — in-022 recovered, v2's in-003/in-026
+  retrieval gains kept) · correctness 89.5% (34/38 answered; the old
+  "91.2%" run answered only 34 and got 31 right — this run answers 4 more
+  AND gets 3 more right) · faithfulness 99.5% · adversarial 8/8 ·
+  false refusals 1/42 (in-032, known chunking gap) · 0 errors ·
+  latency median 8.71s mean 8.51s (idle, uncontaminated).
+
+Residual flips, spot-read per the grill rule:
+- in-013 correct->incorrect: JUDGE VARIANCE — re-running the same judge on
+  the same answer returns contradicts=false/answers=true. Inside the
+  documented judge noise band (judge-human confusion 4fp/2fn).
+- in-003 refusal->incorrect: newly answered thanks to the index fix; the
+  generator anchors on a generic insurance definition of אכשרה before the
+  unemployment-specific one. Net gain vs a refusal; generation
+  chunk-anchoring, not a regression from the fixes.

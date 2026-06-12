@@ -148,25 +148,25 @@ The bot itself never calls OpenAI — only the eval harness does.
 <div class="columns">
 
 <div>
-<div class="stat">80%</div>
+<div class="stat">83.3%</div>
 <div class="label">hit@5 / recall@5 — gold doc in top-5</div>
 <br>
-<div class="stat">91.2%</div>
-<div class="label">answer correctness (gpt-4.1 judge · human-adjudicated 88.2%)</div>
+<div class="stat">89.5%</div>
+<div class="label">answer correctness (gpt-4.1 judge, 34/38 answered · human-anchored 88.2%)</div>
 <br>
 <div class="stat">100%</div>
 <div class="label">correct refusal on adversarial (incl. prompt-injection)</div>
 </div>
 
 <div>
-<div class="stat">99.3%</div>
+<div class="stat">99.5%</div>
 <div class="label">faithfulness — per-claim vs retrieved context · zero fabrication</div>
 <br>
 <div class="stat">100%</div>
-<div class="label">language match · 100% cited · 1/40 false refusals</div>
+<div class="label">language match · 100% cited · 1/42 false refusals</div>
 <br>
 <div class="stat">$0.010</div>
-<div class="label">per question · ~3.2s median — full cost visible in LangSmith</div>
+<div class="label">per question · ~8.7s median — full cost visible in LangSmith</div>
 </div>
 
 </div>
@@ -181,15 +181,16 @@ The bot itself never calls OpenAI — only the eval harness does.
 
 <div class="columns">
 
-**The crisis (×3)**
+**The crisis (×4)**
 - Built the bot. Ran 48 questions. Got **27.5%** correctness. Read 11 failures by hand → the **golds were broken** (training-set chunks, often tangential). Re-curated all 40 against real page text → **40%**.
 - Still refusing 7/40 in-scope questions. The suspected fix (similarity floor) was **disproved by a calibration sweep** — the real bug was generation over-refusal. Prompt fix → 1/40, faithfulness held at 100%.
-- Then we **calibrated the judge against a human** — o4-mini under-credited correct answers and flipped its own verdicts. Swapped to gpt-4.1 → judge agrees with human adjudication (91.2% vs 88.2%).
+- Then we **calibrated the judge against a human** — o4-mini under-credited correct answers and flipped its own verdicts. Swapped to gpt-4.1 → judge agrees with human adjudication.
+- Then a routine index rebuild **silently broke ANN recall** (true nearest neighbors never surfaced — proven by brute force over the stored vectors). Caught only because we re-ran the eval after an infra change. Now a recall gate blocks every index flip.
 
 **The lesson**
-- Every layer of the measurement was wrong before the bot was: gold → refusal hypothesis → judge
-- Cross-provider judging (Gemini answers, GPT judges) + a human calibration anchor caught all three
-- Same bot, same retriever throughout: **27.5% → 91.2%** was measurement repair, not model work
+- Every layer was wrong before the bot was: gold → refusal hypothesis → judge → vector index
+- Cross-provider judging + a human anchor + re-running the eval after EVERY change caught all four
+- Same bot, same retriever throughout: **27.5% → 89.5%** was measurement + infra repair, not model work
 
 </div>
 

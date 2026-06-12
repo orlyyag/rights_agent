@@ -161,30 +161,31 @@ sources → preprocessing → GenAI components → output/feedback).
 
 | Metric | Description | Target | Achieved |
 |---|---|---|---|
-| Accuracy | % correct, grounded, right-language | ≥90% | **73.5% answer-correctness**, **100% faithfulness** (grounded), **100%** right-language + cited on the curated golden set (see *Evaluation results* below) |
-| Latency | avg input→response | <2s | ~6.5s median (linear; verbose grounded answers) — `<A2/T17 optimized: before → after>` |
+| Accuracy | % correct, grounded, right-language | ≥90% | **89.5% answer-correctness** (34/38 answered of 42), **99.5% faithfulness** (grounded), **100%** right-language + cited on the curated golden set (see *Evaluation results* below) |
+| Latency | avg input→response | <2s | **~8.7s median** (clean idle measurement, 2026-06-12; verbose ~250-word grounded answers, thinking budget 0). The <2s target is not met on the live path and we report that honestly rather than trim answer quality; A2 ("improve one dimension") was realized as the measured quality delta of the eval-system repair (see step-6 note below) |
 | Error rate | % failed/incorrect | <5% | 0 eval/runtime errors; refusal-when-ungrounded (no fabrication observed) |
 | Uptime | availability | 99% | local long-poll demo — N/A |
 
 **Evaluation results (curated golden set, linear path over the pipeline collection)**
 
-Golden set: 40 in-scope real user questions (held out from the Webiks KolZchut QA dataset) + 8 hand-written adversarial. The evaluation went through three honest iterations (full narrative in [PROGRESS.md](PROGRESS.md), spec/plan in `docs/superpowers/`):
+Golden set: 42 in-scope real user questions (held out from the Webiks KolZchut QA dataset) + 8 hand-written adversarial. The evaluation went through four honest iterations (full narrative in [PROGRESS.md](PROGRESS.md), spec/plan in `docs/superpowers/`):
 
 1. **Gold curation.** The raw Webiks `gold_paragraph` is a retrieval-training chunk, not an answer key — usually a tangential page section — so it systematically under-credited correct answers. We re-curated all 40 golds against the actual indexed page text (every reference machine-verified verbatim; changelog in [eval/CURATION.md](eval/CURATION.md)).
 2. **Metric redesign.** Reassigned every metric to the right mechanism: deterministic facts (hit/recall/MRR, citation, language, refusal split) are **heuristics**; semantic judgments use a **cross-provider OpenAI `o4-mini` judge** (the generator is Gemini, so the judge has no self-preference). Critically, **faithfulness is now judged per-claim against the retrieved context** (what the model actually saw), not the narrow gold paragraph — fixing a metric artifact that had pinned it at a meaningless 3.7%.
 3. **Over-refusal fix.** The new refusal-split metric showed 7/40 *false* refusals. Investigation **disproved** the standing "similarity-floor too strict" hypothesis (gold chunks score 0.67–0.84, far above the 0.35 floor; the floor cuts nothing). The real cause was generation-time over-refusal; relaxing the prompt to apply stated rules (plus a personal-advice guard) cut false refusals 7 → 1 with **faithfulness staying at 100%** (no hallucination) and adversarial refusal staying at 100%.
+4. **The eval as an infra regression net.** Re-running the eval after a routine index rebuild caught two silent regressions the same day: (a) the rebuilt Chroma collection had **query-dependent ANN recall holes** (true nearest neighbors at cosine-distance 0.24 never surfaced; proven by brute-force over the stored embeddings) — fixed with explicit HNSW build parameters plus a **brute-force-vs-ANN recall gate** that now blocks every blue-green pointer flip on a defective graph; and (b) a prompt rework had silently re-introduced over-refusal and dropped eligibility hedging (proven by A/B at temperature 0 on identical retrieved context) — fixed and pinned with regression tests. Full evidence chain in `eval/failure_analysis.txt`.
 
 | Metric | Value | Note |
 |---|---|---|
-| Retrieval hit@5 / recall@5 / MRR | **80%** (32/40) / 80% / 0.58 | gold-doc-set aware |
-| **Faithfulness** (per-claim vs retrieved context) | **99.3%** (34/34) | answers grounded in sources; no fabrication |
-| **Answer-correctness** (no contradiction w/ gold + answers Q) | **91.2%** judge · **88.2%** human-adjudicated (n=34) | gpt-4.1 judge now tracks adjudication closely (see below) |
-| Answer-relevancy (addresses the question) | 92.4% (n=34) | |
+| Retrieval hit@5 / recall@5 / MRR | **83.3%** (35/42) / 83.3% / 0.59 | gold-doc-set aware |
+| **Faithfulness** (per-claim vs retrieved context) | **99.5%** (n=38) | answers grounded in sources; no fabrication |
+| **Answer-correctness** (no contradiction w/ gold + answers Q) | **89.5%** judge (34/38 answered) | judge validated against human adjudication of the prior run (88.2%, n=34); judge↔human agreement 82.4% |
+| Answer-relevancy (addresses the question) | 91.6% (n=38) | |
 | Language match / citation present | 100% / 100% | deterministic heuristics |
 | Correct refusal (adversarial) | **100%** (8/8) | off-topic + prompt-injection all refused |
-| False refusals (gold retrieved, bot refused) | **2.5%** (1/40) | down from 7/40; residual is one chunking gap (in-032) |
+| False refusals (gold retrieved, bot refused) | **2.4%** (1/42) | down from 7/40; residual is one chunking gap (in-032) |
 
-*Judge calibration (validation anchor) — and a judge-model finding.* All 34 answered items were independently re-adjudicated against the source pages (88.2% correct, 30/34). We **calibrated the LLM judge against that adjudication**, and it caught a real problem: the first judge (`o4-mini`) agreed only 73.5% and was systematically conservative (7 false negatives — it under-credited long, correct answers, and even *flipped its own verdict* across identical runs). Swapping the judge to **`gpt-4.1`** (a one-line, eval-only change — the bot stays Gemini) raised judge↔adjudication agreement to **79.4%** and brought the judge's correctness estimate (91.2%) in line with the human 88.2%. Lesson: an LLM-as-judge must itself be validated; the model matters. (Cohen's κ reads negative here, but that's the κ-paradox under ~90% one-class base rate — raw agreement and the aggregate match are the meaningful signals.) *Note on RAGAS:* the plan called for a real-RAGAS cross-check, but RAGAS is not installable here (Python 3.14 has no `scikit-network` wheel; on 3.13 RAGAS conflicts with the released langchain v1), so we use **custom, Hebrew-aware RAGAS-style judges** validated by human adjudication.
+*Judge calibration (validation anchor) — and a judge-model finding.* All 34 answered items were independently re-adjudicated against the source pages (88.2% correct, 30/34). We **calibrated the LLM judge against that adjudication**, and it caught a real problem: the first judge (`o4-mini`) agreed only 73.5% and was systematically conservative (7 false negatives — it under-credited long, correct answers, and even *flipped its own verdict* across identical runs). Swapping the judge to **`gpt-4.1`** (a one-line, eval-only change — the bot stays Gemini) raised judge↔adjudication agreement to **~80%** (82.4% against the current run) and brought the judge's correctness estimate in line with the human 88.2%. Lesson: an LLM-as-judge must itself be validated; the model matters. (Cohen's κ reads negative here, but that's the κ-paradox under ~90% one-class base rate — raw agreement and the aggregate match are the meaningful signals.) *Note on RAGAS:* the plan called for a real-RAGAS cross-check, but RAGAS is not installable here (Python 3.14 has no `scikit-network` wheel; on 3.13 RAGAS conflicts with the released langchain v1), so we use **custom, Hebrew-aware RAGAS-style judges** validated by human adjudication.
 
 **System Performance — Business KPIs** (hybrid framing; estimates OK, **label them**)
 
