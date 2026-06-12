@@ -52,3 +52,21 @@ def test_auto_generation_prompt_keeps_question_language():
     p = prompts.build_generation_prompt("What am I entitled to after birth?", [_rc("מענק לידה", "תוכן")], "auto")
     assert "NEVER in the language of the sources" in p
     assert "What am I entitled to" in p
+
+
+def test_system_prompt_guards_against_over_refusal_and_scope_creep():
+    """Regression guards for the ed420cf prompt rework (2026-06-12 fix):
+    the rework re-introduced over-refusal (in-020), dropped eligibility
+    hedging (in-005), and inflated answers with off-question benefit surveys.
+    eval/failure_analysis.txt, 'V2 RE-RUN FLIP ANALYSIS'."""
+    sp = prompts.system_prompt("he")
+    # partial coverage → answer with what the sources DO say, never refuse
+    assert "partially or in general terms" in sp
+    assert "instead of refusing" in sp
+    # criteria-based rights are presented as conditional, not unconditional
+    assert "עשויים להיות זכאים" in sp
+    assert "conditional" in sp
+    # answers stay on-question — no adjacent-benefits enumeration
+    assert "Answer ONLY the question asked" in sp
+    # the refusal marker mechanics must survive any rewording (answer.py parses it)
+    assert prompts.REFUSAL_MARKER in sp
