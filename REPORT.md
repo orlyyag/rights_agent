@@ -153,6 +153,19 @@ sources → preprocessing → GenAI components → output/feedback).
   over-refusal. **Solution:** prompt now permits applying stated rules to the user's case
   (plus an explicit personal-advice guard); false refusals 7 → 1 with faithfulness held
   at 100% and adversarial refusal at 100%.
+- **Challenge:** the agentic loop didn't earn its latency. We built the full LangGraph
+  path (rewrite → grade_docs → bounded re-retrieve) and **measured it against linear** on
+  the golden set: ~56% higher cost per question ($0.0156 vs $0.010), ~1.7× latency
+  (2–5 sequential LLM round-trips vs 1), same hit@5, no correctness gain — terminology
+  broadening cannot fix "the answer isn't in the index", which is what most hard failures
+  are. **Decision:** linear stays the serving default; the agent stays opt-in
+  (`KZ_ANSWER_PATH=agent`). **Designed simplification (post-submission):** a
+  *confidence-routed rescue* — two free signals (retrieval top-1 score, already computed;
+  and the generator's own `[REFUSAL]` marker, which already judges context sufficiency)
+  gate a single broaden→re-retrieve→regenerate rescue on the ~10–15% weak-retrieval tail.
+  Median latency stays at linear; `grade_docs` and `rewrite` leave the hot path; the
+  graph collapses from 6 nodes to 4. This is the same engineering loop as the judge and
+  index findings: measure, then keep only what pays for itself.
 - **Challenge:** the site's WAF blocks default bot user-agents. **Solution:** descriptive
   UA + ~1 req/s throttle + `maxlag=5` + resumable manifest-diff crawling.
 - **If the POC missed target:** 🖊️ HUMAN — document what you tried + how you adjusted scope.
@@ -216,10 +229,12 @@ latency/cost **before → after** with the quality trade-off.
 - **Evaluation** — RAGAS/judge numbers, he vs ru; "improve one dimension" before→after.
 - **Business value** — hybrid KPIs (productivity/access + operational).
 - **Demo** — live query + backup video.
-- **Next steps** — WhatsApp, Arabic, better Russian, voice→text.
+- **Next steps** — WhatsApp, Arabic, better Russian, voice→text; **confidence-routed
+  rescue** (the agent's rescue value at linear latency — free score gate + refusal-triggered
+  broaden, designed in §4 Challenges).
 
 ---
 
 ## Appendix — Full code
 
-`<github repo link>`
+https://github.com/orlyyag/rights_agent (private)

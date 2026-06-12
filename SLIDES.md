@@ -226,3 +226,24 @@ The bot itself never calls OpenAI — only the eval harness does.
 </div>
 
 > **Want a pilot?** Bot is live on Telegram, code on GitHub, eval reports in the repo. Talk to us.
+
+---
+
+<!-- Backup slides — Q&A ammo. Stop presenting at the previous slide. -->
+
+## Backup · "Why isn't it agentic?" — we measured it
+
+We built the full agent loop (rewrite → grade → re-retrieve → generate). Then we raced it against plain linear on the golden set:
+
+| | linear (1 LLM call) | agent (2–5 sequential calls) |
+|---|---|---|
+| hit@5 (hardest 10) | 4/10 | 4/10 — **no gain** |
+| correctness | 3/10 | 2/10 |
+| cost / question | $0.010 | $0.0156 (**+56%**) |
+| latency | ~8.5s | ~9–20s (**~1.7×**) |
+
+**Why no win:** `grade_docs` taxes *every* question ~2–3s to verify what similarity scores already said — and terminology-broadening can't fix "the answer isn't in the index", which is what hard failures actually are.
+
+**The redesign (next sprint): confidence-routed rescue.** Two *free* signals — the retrieval score (already computed) and the generator's own `[REFUSAL]` marker (it already judges sufficiency) — trigger one broaden→re-retrieve→regenerate pass on the ~10–15% weak tail only. Median latency = linear; the graph shrinks 6 nodes → 4.
+
+> Same discipline as the judge and the index: **measure, keep what pays rent.**
