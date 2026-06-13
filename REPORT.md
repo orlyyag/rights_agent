@@ -125,9 +125,10 @@ cross-lingually and answers in the question's language.
    smarter retrieval pass instead of a wrong answer.
 3. **Telegram bot** (long-poll, HTML rendering, bidi-safe) → meets users where they
    already are; zero onboarding.
-4. **Guardrails** (allowlist, rate cap, language enforcement, PII-redacted logging,
-   injection defense, refuse-if-empty, personal-advice guard) → safe to expose to real
-   users; answers stay informational, not legal advice.
+4. **Guardrails** (allowlist, per-minute rate cap, **per-chat daily question cap** for
+   cost/abuse control, language enforcement, PII-redacted logging, injection defense,
+   refuse-if-empty, personal-advice guard) → safe to expose to real users; answers stay
+   informational, not legal advice; one user cannot drain the LLM budget.
 5. **Evaluations** (golden set + heuristics + human-calibrated cross-provider LLM judge)
    → quality claims are measured, not vibes; regressions are caught before users see them.
 
