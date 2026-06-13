@@ -20,12 +20,18 @@ data/active_collection
 data/chroma/
 data/qa/
 
-# Eval run artifacts (results JSONL + run log) — the report.md travels with code
+# Eval run artifacts (results JSONL + run log) — the report.md travels with code.
+# Spot-check/calibration *.jsonl are kept (evidence for PROGRESS.md); only the
+# .log progress spam is ignored.
 eval/results_*.jsonl
 eval/run.log
 eval/run_*.log
+eval/spot_check*.log
 data/acquire.log
 data/build_pipeline.log
+data/*.log
+data/build_bilingual.log
+data/rebuild_*.log
 
 # Curation working artifacts (derived cache + transient triage); CURATION.md,
 # curate_lib.py, rerun_one.py, curate_out/ and golden_he.jsonl.orig are kept.
