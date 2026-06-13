@@ -67,12 +67,30 @@ fluency.
   new app or website.
 
 **Technical Discovery**
-- **Stakeholder Interviews:** _[To add before submission: summaries of ≥2 primary
-  conversations — e.g. a Russian-speaking citizen who navigated bituach leumi, a Kol Zchut
-  user, and/or a social worker — 2–3 concrete insights each. Discovery to date draws on
-  secondary sources: the Kol Zchut on-site chatbot and its open-source Webiks/NNLP-IL
-  stack, the published QA dataset, and direct inspection of the live wiki's structure and
-  data-quality gaps documented below.]_
+- **Stakeholder Interviews.** Two primary interviews with the core target population —
+  Russian-speaking retirees:
+  - **Zvi, 74** — retired and drawing his pension, but still working part-time. His open
+    questions were concrete and high-stakes: how does part-time work affect his pension;
+    what salary level keeps his pension rights intact; and is his employer obligated to
+    pay him social/pension contributions? He had never heard of Kol Zchut.
+  - **Zina, 70** — runs her own cosmetics business with no formal pension fund. She asked
+    what minimum/basic payment she is entitled to (old-age allowance), and whether she
+    qualifies for free public transport at 70. She, too, was unaware Kol Zchut existed.
+
+  **Insights (each maps to a design decision):**
+  1. **Real, unmet, consequential need.** Both had specific rights questions with direct
+     financial impact (pension optimization, employer obligations, old-age allowance,
+     senior transit) and did not know the answers — or that an authoritative source
+     existed. → validates grounded, cited answers over generic chat.
+  2. **Discovery gap.** Neither had heard of Kol Zchut; for this population "publicly
+     available" is not the same as "findable." → the value is in the *channel*, not just
+     the content.
+  3. **Channel fit.** Both use WhatsApp/Telegram comfortably (simple, intuitive) and
+     delegate complex web tasks to their children. → directly validates a messaging-bot
+     interface over a website, and the Russian-native path.
+  4. **Organic distribution.** Both asked to be kept informed when the bot is available
+     and wanted to share the link with relatives and friends. → word-of-mouth reach is
+     plausible within exactly the target community.
 - **Data Availability & Quality:** Kol Zchut's MediaWiki API is open and read-accessible
   (he ~7,338 / ru ~4,072 content articles; CC BY-NC-SA 2.5 IL — attribute + link back,
   which our citation footer does by design). Two official datasets bootstrap the project:
