@@ -7,8 +7,9 @@ rights and government benefits in Israel, grounded in the
 [Kol Zchut](https://www.kolzchut.org.il) knowledge base, with citations.
 
 **Course:** Gen AI for AI Development (Google × Reichman University, Israel) — final project.
-**Team:** 2 people. **Timeline:** ~1 week to a working demo.
-**Status of this doc:** design/plan (engineering-reviewed 2026-06-07), pre-implementation.
+**Team:** originally planned for 2; **executed solo** (Orly Yagudayev). **Timeline:** ~1 week to a working demo.
+**Status of this doc:** design/plan (engineering-reviewed 2026-06-07), pre-implementation. The
+two-lane / "2 people" execution sections below reflect the original plan, not the final solo execution.
 
 ---
 
