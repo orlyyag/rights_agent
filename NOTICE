@@ -1,0 +1,34 @@
+NOTICE — third-party content and data attribution
+==================================================
+
+This project's SOURCE CODE is licensed under the MIT License (see LICENSE).
+The data and content below are NOT covered by MIT — they carry the upstream
+licenses noted here. If you reuse this repository, you must honor these terms.
+
+1. Kol Zchut content
+   - Source: Kol Zchut (כל זכות), https://www.kolzchut.org.il
+   - License: Creative Commons Attribution-NonCommercial-ShareAlike 2.5 Israel
+     (CC BY-NC-SA 2.5 IL).
+   - Applies to: text derived from Kol Zchut pages — including the gold
+     paragraphs in eval/golden_he.jsonl (and its .orig), curation artifacts in
+     eval/, and any indexed/ingested page text the pipeline produces.
+   - Terms: attribution to "Kol Zchut" with a link back; NON-COMMERCIAL use
+     only; derivatives must be shared under the same license (ShareAlike).
+   - The running bot attributes and links back to the source page on every
+     answer (citation footer), by design.
+
+2. Webiks / NNLP-IL Hebrew RAGbot — KolZchut QA training dataset
+   - Source: https://github.com/NNLP-IL/Webiks-Hebrew-RAGbot-KolZchut-QA-Training-DataSet
+   - License: CC-BY-4.0 (attribution).
+   - Applies to: the question/doc_id/gold-paragraph rows the Hebrew golden set
+     was seeded from before re-curation (see eval/CURATION.md).
+
+3. Webiks / NNLP-IL Hebrew Paragraph Corpus
+   - Source: https://github.com/NNLP-IL/Webiks-Hebrew-RAGbot
+   - License: per the upstream repository (Kol Zchut-derived; CC BY-NC-SA).
+   - Applies to: the fast-start corpus collection (not required at runtime once
+     the project's own pipeline index is built).
+
+Summary: the code is MIT and freely reusable; the Kol Zchut-derived data is
+NonCommercial + ShareAlike and must be attributed. For any commercial use,
+obtain permission for the Kol Zchut content separately.

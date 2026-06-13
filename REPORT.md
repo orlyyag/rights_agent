@@ -2,7 +2,7 @@
 
 **Course:** Generative AI Systems Design & Implementation (Google × Reichman University)
 **Team:** Orly Yagudayev · orli.yag@gmail.com (solo submission)
-**Repo:** https://github.com/orlyyag/rights_agent (private) · **Submission date:** 2026-06-13
+**Repo:** https://github.com/orlyyag/rights_agent · **Submission date:** 2026-06-13
 
 > This document is structured to the five rubric sections. Architecture details live in
 > [PLAN.md](PLAN.md) (§4, §10) and are summarized here. Implementation was accelerated with
@@ -120,9 +120,11 @@ cross-lingually and answers in the question's language.
 1. **Ingestion pipeline** (MediaWiki manifest-diff → clean → chunk → embed, blue-green
    index swap) → answers reflect the *current* wiki, including benefit amounts the static
    corpus had flattened or let go stale.
-2. **Agentic RAG core** (LangGraph: history-aware rewrite → retrieve → grade_docs →
-   bounded re-retrieve → generate) → colloquial questions and follow-ups get a second,
-   smarter retrieval pass instead of a wrong answer.
+2. **Agentic RAG core, opt-in** (LangGraph: history-aware rewrite → retrieve → grade_docs →
+   bounded re-retrieve → generate) → built and evaluated so colloquial questions and
+   follow-ups *can* get a second, smarter retrieval pass; kept opt-in because measurement
+   showed no quality gain over the linear default (see §4 Challenges). The serving default
+   is the linear path.
 3. **Telegram bot** (long-poll, HTML rendering, bidi-safe) → meets users where they
    already are; zero onboarding.
 4. **Guardrails** (allowlist, per-minute rate cap, **per-chat daily question cap** for
@@ -195,7 +197,10 @@ flowchart LR
 - **Input:** a rights question in Hebrew or Russian (Telegram text).
 - **Output:** a grounded answer in the user's language + ≤3 citations + disclaimer; or a refusal.
 - **Success metric:** ≥90% of demo questions correct + grounded + cited + right language.
-- **Minimum viable test set:** golden set — he ~40–50, ru ~20–30 (human-verified) + ~5–8 adversarial/lang.
+- **Test set (status):** Hebrew golden set — 42 in-scope + 8 adversarial, **evaluated** (below).
+  Russian is **served** natively (own ru index + ru citations) but a human-verified Russian
+  golden set (~20–30 ru-native questions) is **planned before production**, not yet evaluated —
+  so quantitative results in this report are Hebrew-only and labelled as such.
 - **Target before adding complexity:** Tier-0 Hebrew grounded+cited answers on Telegram.
 
 **Development Steps**
@@ -255,7 +260,8 @@ flowchart LR
 | Error rate | % failed/incorrect | <5% | 0 eval/runtime errors; refusal-when-ungrounded (no fabrication observed) |
 | Uptime | availability | 99% | local long-poll demo — N/A |
 
-**Evaluation results (curated golden set, linear path over the pipeline collection)**
+**Evaluation results (Hebrew curated golden set, linear path over the pipeline collection)**
+*Scope: results below are Hebrew. Russian is served natively but not yet evaluated (see Test set status above).*
 
 Golden set: 42 in-scope real user questions (held out from the Webiks KolZchut QA dataset) + 8 hand-written adversarial. The evaluation went through four honest iterations (full narrative in [PROGRESS.md](PROGRESS.md)):
 
@@ -284,7 +290,7 @@ All figures below are **estimates**, labelled as such; they frame the value case
 |---|---|---|---|
 | Productivity gain | time-to-answer vs manual KZ navigation | ~5–10 min manual search & read | ~10s bot answer with citations |
 | Reach / access | population the channel unlocks | Hebrew-only web widget | ~1.3M ru speakers + elderly, via Telegram |
-| Customer satisfaction | demo-tester rating | — | _to add: ≥3 demo-tester ratings, x/5_ |
+| Customer satisfaction | intent-to-refer (interviews) | — | 2/2 interviewees (Zvi, Zina) asked to be notified and to share the bot with family/friends |
 | Operational savings | est. KZ helpline / staff-hours saved | manual triage of repetitive Qs | deflects common look-ups; est. minutes saved per query |
 
 **"Improve one dimension" (methodology step 6 / A2).** The dimension we improved is
@@ -302,7 +308,7 @@ cost ~56% more for no correctness gain (see Challenges). The designed next step
 Hebrew answer with citations, a Russian answer, a follow-up, and a refusal. The live bot
 and the pitch deck ([SLIDES.md](SLIDES.md)) carry these for the demo.]_
 
-**Code repository:** https://github.com/orlyyag/rights_agent (private)
+**Code repository:** https://github.com/orlyyag/rights_agent
 
 ---
 
@@ -325,4 +331,4 @@ and the pitch deck ([SLIDES.md](SLIDES.md)) carry these for the demo.]_
 
 ## Appendix — Full code
 
-https://github.com/orlyyag/rights_agent (private)
+https://github.com/orlyyag/rights_agent

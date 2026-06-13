@@ -52,9 +52,11 @@ A few things happen behind the scenes that make it more than a simple search:
 - **Bilingual by design**, with **first-class Russian** — not a Hebrew-only tool with
   translation bolted on.
 - Meets people **where they already are** (Telegram), no new app or website to learn.
-- A **self-checking agent**, not a one-shot lookup — it grades its own results and
-  retries before it answers.
-- Built on **openly-licensed** Kol Zchut content, always **credited and linked back**.
+- **Grounded and cited, never invented** — it refuses when the sources don't cover the
+  question. (An agentic self-checking path that grades its own retrieval and retries is
+  built and evaluated, but kept **opt-in**: measurement showed it cost more without
+  improving answers, so the leaner one-pass path is the serving default.)
+- Built on Kol Zchut content (**CC BY-NC-SA**), always **credited and linked back**.
 
 ## How we know it works
 

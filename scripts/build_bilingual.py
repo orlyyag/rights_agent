@@ -72,6 +72,13 @@ def main(dest: str) -> None:
         raise SystemExit(f"✗ Smoke check FAILED ({dst.count()} < {src.count()}) "
                          f"— pointer NOT flipped; '{active}' stays active.")
 
+    # ANN-recall gate before the flip — a smoke check (count only) cannot catch
+    # the query-dependent recall holes that the default HNSW build can produce
+    # (this is exactly how kz_v2 shipped a hole). Never flip to a defective graph.
+    if not sync_mod.recall_gate_ok(dst):
+        raise SystemExit(f"✗ Recall gate FAILED — '{dest}' has ANN holes; "
+                         f"pointer NOT flipped; '{active}' stays active.")
+
     config.set_active_collection(dest)
     mins = (time.monotonic() - t0) / 60
     print(f"\n✓ Done in {mins:.1f} min — active collection flipped → '{dest}'. "

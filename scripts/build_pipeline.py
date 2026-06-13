@@ -19,7 +19,7 @@ import sys
 import time
 
 import config
-from ingest import acquire, chunk, clean, index
+from ingest import acquire, chunk, clean, index, sync
 
 
 def main(lang: str, *, flip: bool = True) -> None:
@@ -56,6 +56,12 @@ def main(lang: str, *, flip: bool = True) -> None:
         index.build_collection(remaining, collection_name, collection=col)
 
     if flip:
+        # Same recall gate the sync path uses — a from-scratch build can ship an
+        # ANN-defective graph just as a sync can (this is how the kz_v2 hole
+        # shipped). Never flip the pointer to a graph that fails the gate.
+        if not sync.recall_gate_ok(col):
+            raise SystemExit(f"✗ Recall gate FAILED — '{collection_name}' has ANN "
+                             f"holes; pointer NOT flipped. Rebuild before flipping.")
         config.set_active_collection(collection_name)
         print(f"\n✓ Active collection flipped to '{collection_name}' "
               f"(read per-request, R7 — bot picks it up on next message).",
