@@ -19,7 +19,7 @@ Every in-scope item was re-curated against the **actual page text the bot indexe
 
 **9 documents changed; 22 paragraphs replaced; 9 confirmed as-is; 1 question replaced.** Confidence: {'med': 13, 'high': 26, 'low': 1}.
 
-Originals preserved in `eval/golden_he.jsonl.orig`. Per-item research output in `eval/curate_out/B*.jsonl`.
+Per-item research output in `eval/curate_out/B*.jsonl`. (The pre-curation noisy golden set is retained in git history, not in the published tree.)
 
 ## Document / question changes
 

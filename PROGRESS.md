@@ -261,7 +261,7 @@ Most of the pre-refusal regression likely comes from a too-strict lenient floor 
 
 Manual failure analysis showed the headline correctness number was a **measurement artifact**, not a bot problem: the Webiks QA CSV was built to train a retrieval embedder, so each `gold_paragraph` is an arbitrary page chunk — usually a *tangential* section, not the passage that answers the question. The judge scores against that paragraph, so good answers failed against bad references.
 
-Re-curated **all 40 in-scope golds** against the actual indexed page text (8 parallel research agents → `eval/curate_lib.py`), machine-verified every paragraph is verbatim (no fabrication) and every doc is in the index. See `eval/CURATION.md`; originals in `eval/golden_he.jsonl.orig`.
+Re-curated **all 40 in-scope golds** against the actual indexed page text (8 parallel research agents → `eval/curate_lib.py`), machine-verified every paragraph is verbatim (no fabrication) and every doc is in the index. See `eval/CURATION.md`.
 
 - **8 docs changed** (wrong page), **22 paragraphs replaced** (tangential → answering), **9 confirmed**, **1 question replaced** (in-007 meta-complaint → a resignation/relocation severance corner case, gold `6607`).
 
