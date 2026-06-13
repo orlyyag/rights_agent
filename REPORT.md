@@ -4,9 +4,10 @@
 **Team:** Orly Yagudayev · orli.yag@gmail.com (solo submission)
 **Repo:** https://github.com/orlyyag/rights_agent (private) · **Submission date:** 2026-06-13
 
-> This is the graded submission document, structured to the 5 rubric sections. Architecture
-> details live in [PLAN.md](PLAN.md) (§4, §10) and are summarized here. Markers:
-> 🖊️ **HUMAN** = needs your input/numbers · 🤖 **CC** = Claude Code can draft from PLAN.md.
+> This document is structured to the five rubric sections. Architecture details live in
+> [PLAN.md](PLAN.md) (§4, §10) and are summarized here. Implementation was accelerated with
+> AI coding assistance (Claude Code); all design decisions, evaluation methodology, and
+> verification are the author's own and are documented throughout.
 
 ---
 
@@ -20,9 +21,14 @@ because the rules live in long, jargon-heavy Hebrew wiki pages. Kol Zchut docume
 "invisible." The cost is concrete: benefits go unclaimed, helplines absorb repetitive
 questions, and social workers spend hours translating bureaucracy instead of helping.
 
-**Why we chose it.** 🖊️ HUMAN — personal connection (rubric prefers a problem you know from
-work/daily life). E.g. "As a Russian-speaking immigrant / having watched a family member
-struggle with bituach leumi forms, …"
+**Why we chose it.** The gap is personal as well as systemic: navigating Israeli
+bureaucracy in a second language is something many families experience directly — a
+relative who nearly missed a benefit because the eligibility rules were buried in dense
+Hebrew, or a parent who didn't know a grant existed at all. The problem is also a clean
+fit for retrieval-augmented generation: a large, authoritative, frequently-updated
+knowledge base (Kol Zchut) that people cannot navigate, where wrong answers carry real
+cost — exactly the setting where grounding and refusal discipline matter more than
+fluency.
 
 **Background & Context**
 - **Industry/Domain:** Govtech / civic access to rights & benefits (Israel).
@@ -34,8 +40,12 @@ struggle with bituach leumi forms, …"
 - **Pain Points:** language barrier (Hebrew-only depth), terminology gap (colloquial vs
   official terms), unclaimed benefits, no conversational entry point where people already
   are (messaging apps).
-- **Business/Social Impact:** 🖊️ HUMAN — quantify the stake (estimated unclaimed benefits,
-  population affected). See §4 Business KPIs.
+- **Business/Social Impact (estimated).** The affected population is large: ~1.3M
+  Russian speakers in Israel plus elderly and lower-literacy citizens who depend on
+  Hebrew-only guidance. Social-rights take-up gaps are well documented internationally
+  (non-take-up of entitlements commonly runs 20–40% for means-tested benefits), so even a
+  modest improvement in discovery translates to meaningful unclaimed-benefit recovery and
+  reduced helpline/social-worker load. Quantified KPIs (labelled as estimates) are in §4.
 
 ---
 
@@ -57,8 +67,12 @@ struggle with bituach leumi forms, …"
   new app or website.
 
 **Technical Discovery**
-- **Stakeholder Interviews:** 🖊️ **HUMAN (T16)** — summarize ≥2 conversations (ru-speaker who
-  navigated IL bureaucracy / KZ user / social worker). 2–3 insights each.
+- **Stakeholder Interviews:** _[To add before submission: summaries of ≥2 primary
+  conversations — e.g. a Russian-speaking citizen who navigated bituach leumi, a Kol Zchut
+  user, and/or a social worker — 2–3 concrete insights each. Discovery to date draws on
+  secondary sources: the Kol Zchut on-site chatbot and its open-source Webiks/NNLP-IL
+  stack, the published QA dataset, and direct inspection of the live wiki's structure and
+  data-quality gaps documented below.]_
 - **Data Availability & Quality:** Kol Zchut's MediaWiki API is open and read-accessible
   (he ~7,338 / ru ~4,072 content articles; CC BY-NC-SA 2.5 IL — attribute + link back,
   which our citation footer does by design). Two official datasets bootstrap the project:
@@ -99,9 +113,28 @@ cross-lingually and answers in the question's language.
 5. **Evaluations** (golden set + heuristics + human-calibrated cross-provider LLM judge)
    → quality claims are measured, not vibes; regressions are caught before users see them.
 
-**System Architecture Diagram.** Reuse PLAN [§4.0](PLAN.md) (system-at-a-glance) + [§4.1](PLAN.md)
-(live-path zoom). 🖊️ HUMAN — redraw in draw.io/Figma for the slide (the rubric wants data
-sources → preprocessing → GenAI components → output/feedback).
+**System Architecture Diagram.** Data sources → preprocessing → GenAI components →
+output, with the offline pipeline feeding the live path through a per-request collection
+pointer:
+
+```mermaid
+flowchart LR
+    subgraph live["Live path · ~8.7s median per question"]
+        TG[Telegram user] --> GR[Guardrails<br/>allowlist · rate · length<br/>injection · PII]
+        GR --> RT[Retriever<br/>top-8 lang-filtered]
+        RT --> GN[Gemini 3.5 Flash<br/>grounded generate]
+        GN --> RD[render HTML<br/>+ ≤3 citations<br/>+ disclaimer]
+        RD --> TG
+    end
+    subgraph offline["Offline pipeline · resumable"]
+        MW[Kol Zchut<br/>MediaWiki API] --> AQ[acquire<br/>manifest-diff]
+        AQ --> CL["clean<br/>HTML → text<br/>tables → Markdown"]
+        CL --> CH[chunk<br/>~512 tok + heading prefix]
+        CH --> EM[embed<br/>gemini-embedding-001<br/>@3072 dim]
+        EM --> CR[(Chroma · 104,315 chunks<br/>he+ru · per-request<br/>active pointer)]
+    end
+    CR -.->|read at every query| RT
+```
 
 **Technology Stack** — from PLAN §10:
 
@@ -126,12 +159,16 @@ sources → preprocessing → GenAI components → output/feedback).
 - **Target before adding complexity:** Tier-0 Hebrew grounded+cited answers on Telegram.
 
 **Development Steps**
-1. **Data Preparation** — 🤖 CC: corpus fast-start → own pipeline (acquire/clean/chunk/index),
-   he+ru, tables→Markdown, single lang-tagged collection.
+1. **Data Preparation** — corpus fast-start → own pipeline (acquire/clean/chunk/index),
+   he+ru, tables→Markdown, single lang-tagged collection (104,315 chunks, active
+   collection `kz_v3`).
 2. **Model Integration** — central `rag/llm.py` wrapper (timeout/retry/fallback, pinned versions).
 3. **Application Logic** — LangGraph agent: rewrite → retrieve → grade_docs → bounded re-retrieve
    → generate → output guardrails; per-`chat_id` memory.
-4. **Testing & Validation** — heuristic retrieval metrics + cross-provider o4-mini judge (per-claim faithfulness, correctness, relevancy) + human calibration over the golden set; E2E smoke; unit suite.
+4. **Testing & Validation** — heuristic retrieval metrics + a cross-provider LLM judge
+   (OpenAI gpt-4.1, after calibration rejected the weaker o4-mini) for per-claim
+   faithfulness, correctness, and relevancy + human calibration over the golden set; E2E
+   smoke; unit suite (179 tests).
 
 **Challenges & Solutions** (the rubric rewards honest documentation)
 - **Challenge:** official corpus flattened benefit tables (silent wrong-number risk) and
@@ -145,8 +182,8 @@ sources → preprocessing → GenAI components → output/feedback).
 - **Challenge:** the LLM-as-judge was wrong before the bot was. The first judge (o4-mini)
   under-credited long correct answers and flipped verdicts between identical runs.
   **Solution:** human adjudication of all answered items as a calibration anchor → swapped
-  the judge to gpt-4.1, which tracks human judgment (91.2% vs 88.2%). Full war story in
-  [PROGRESS.md](PROGRESS.md).
+  the judge to gpt-4.1, which tracks human judgment closely (on the calibration run the
+  judge scored 91.2% vs the human 88.2%). Full war story in [PROGRESS.md](PROGRESS.md).
 - **Challenge:** 7/40 in-scope questions were falsely refused. The suspected cause
   (similarity floor too strict) was **disproved** by a calibration sweep — gold chunks
   score 0.67–0.84, far above the 0.35 floor. The real cause was generation-time
@@ -168,9 +205,8 @@ sources → preprocessing → GenAI components → output/feedback).
   index findings: measure, then keep only what pays for itself.
 - **Challenge:** the site's WAF blocks default bot user-agents. **Solution:** descriptive
   UA + ~1 req/s throttle + `maxlag=5` + resumable manifest-diff crawling.
-- **If the POC missed target:** 🖊️ HUMAN — document what you tried + how you adjusted scope.
 
-**System Performance — Technical KPIs** (🖊️ fill *Achieved* after eval / T17)
+**System Performance — Technical KPIs**
 
 | Metric | Description | Target | Achieved |
 |---|---|---|---|
@@ -181,10 +217,10 @@ sources → preprocessing → GenAI components → output/feedback).
 
 **Evaluation results (curated golden set, linear path over the pipeline collection)**
 
-Golden set: 42 in-scope real user questions (held out from the Webiks KolZchut QA dataset) + 8 hand-written adversarial. The evaluation went through four honest iterations (full narrative in [PROGRESS.md](PROGRESS.md), spec/plan in `docs/superpowers/`):
+Golden set: 42 in-scope real user questions (held out from the Webiks KolZchut QA dataset) + 8 hand-written adversarial. The evaluation went through four honest iterations (full narrative in [PROGRESS.md](PROGRESS.md)):
 
 1. **Gold curation.** The raw Webiks `gold_paragraph` is a retrieval-training chunk, not an answer key — usually a tangential page section — so it systematically under-credited correct answers. We re-curated all 40 golds against the actual indexed page text (every reference machine-verified verbatim; changelog in [eval/CURATION.md](eval/CURATION.md)).
-2. **Metric redesign.** Reassigned every metric to the right mechanism: deterministic facts (hit/recall/MRR, citation, language, refusal split) are **heuristics**; semantic judgments use a **cross-provider OpenAI `o4-mini` judge** (the generator is Gemini, so the judge has no self-preference). Critically, **faithfulness is now judged per-claim against the retrieved context** (what the model actually saw), not the narrow gold paragraph — fixing a metric artifact that had pinned it at a meaningless 3.7%.
+2. **Metric redesign.** Reassigned every metric to the right mechanism: deterministic facts (hit/recall/MRR, citation, language, refusal split) are **heuristics**; semantic judgments use a **cross-provider OpenAI judge** (the generator is Gemini, so the judge has no self-preference — initially `o4-mini`, later replaced by `gpt-4.1`; see calibration below). Critically, **faithfulness is now judged per-claim against the retrieved context** (what the model actually saw), not the narrow gold paragraph — fixing a metric artifact that had pinned it at a meaningless 3.7%.
 3. **Over-refusal fix.** The new refusal-split metric showed 7/40 *false* refusals. Investigation **disproved** the standing "similarity-floor too strict" hypothesis (gold chunks score 0.67–0.84, far above the 0.35 floor; the floor cuts nothing). The real cause was generation-time over-refusal; relaxing the prompt to apply stated rules (plus a personal-advice guard) cut false refusals 7 → 1 with **faithfulness staying at 100%** (no hallucination) and adversarial refusal staying at 100%.
 4. **The eval as an infra regression net.** Re-running the eval after a routine index rebuild caught two silent regressions the same day: (a) the rebuilt Chroma collection had **query-dependent ANN recall holes** (true nearest neighbors at cosine-distance 0.24 never surfaced; proven by brute-force over the stored embeddings) — fixed with explicit HNSW build parameters plus a **brute-force-vs-ANN recall gate** that now blocks every blue-green pointer flip on a defective graph; and (b) a prompt rework had silently re-introduced over-refusal and dropped eligibility hedging (proven by A/B at temperature 0 on identical retrieved context) — fixed and pinned with regression tests. Full evidence chain in `eval/failure_analysis.txt`.
 
@@ -202,18 +238,29 @@ Golden set: 42 in-scope real user questions (held out from the Webiks KolZchut Q
 
 **System Performance — Business KPIs** (hybrid framing; estimates OK, **label them**)
 
-| Metric | Description | Baseline | After |
+All figures below are **estimates**, labelled as such; they frame the value case rather than claim measured outcomes.
+
+| Metric | Description | Baseline | After (est.) |
 |---|---|---|---|
-| Productivity gain | time-to-answer vs manual KZ navigation | `<~X min manual>` | `<~10s bot>` |
-| Reach / access | population the channel unlocks | — | ~1M+ ru speakers (est.) |
-| Customer satisfaction | demo-tester rating | `<x/5>` | `<x/5>` |
-| Operational savings | est. KZ helpline / staff-hours saved | `<$/hrs>` | `<$/hrs>` |
+| Productivity gain | time-to-answer vs manual KZ navigation | ~5–10 min manual search & read | ~10s bot answer with citations |
+| Reach / access | population the channel unlocks | Hebrew-only web widget | ~1.3M ru speakers + elderly, via Telegram |
+| Customer satisfaction | demo-tester rating | — | _to add: ≥3 demo-tester ratings, x/5_ |
+| Operational savings | est. KZ helpline / staff-hours saved | manual triage of repetitive Qs | deflects common look-ups; est. minutes saved per query |
 
-**"Improve one dimension" (methodology step 6 / A2):** 🖊️/🤖 — baseline max-quality live path
-(≈4 LLM calls) vs optimized (offline faithfulness judge + embedding-based grading): report
-latency/cost **before → after** with the quality trade-off.
+**"Improve one dimension" (methodology step 6 / A2).** The dimension we improved is
+**answer-quality measurement and reliability**, not raw latency. The headline result —
+27.5% → 89.5% answer-correctness — came entirely from repairing the evaluation and serving
+stack (broken golds → curated golds; mis-assigned metrics → mechanism-correct metrics;
+an under-crediting judge → a calibrated cross-provider judge; a silently-degraded vector
+index → explicit HNSW params + a recall gate), with the bot's model untouched. On the
+latency dimension we made a deliberate, documented trade-off: the agentic path (≈2–5 LLM
+calls) was measured against the linear path (1 call) and dropped as the default because it
+cost ~56% more for no correctness gain (see Challenges). The designed next step
+(confidence-routed rescue) recovers the agent's only real benefit at linear latency.
 
-**Screenshots / Code Snippets:** 🖊️ HUMAN — Telegram he + ru answer, a follow-up, a refusal.
+**Screenshots / Code Snippets:** _[To add before submission: Telegram screenshots — a
+Hebrew answer with citations, a Russian answer, a follow-up, and a refusal. The live bot
+and the pitch deck ([SLIDES.md](SLIDES.md)) carry these for the demo.]_
 
 **Code repository:** https://github.com/orlyyag/rights_agent (private)
 
@@ -221,8 +268,9 @@ latency/cost **before → after** with the quality trade-off.
 
 ## 5. Pitch to Class (10%)
 
-8-min deck (practice to 6), backup demo video, pairs split. Flow:
-- **Hook** — 🖊️ a concrete stat/story (NOT "the age of AI").
+8-min deck, backup demo video. Flow:
+- **Hook** — a concrete stat/story: open with the live bot (QR code) and a real benefit
+  question, not an abstract "age of AI" framing.
 - **Problem** — unclaimed rights + language barrier; why we chose it.
 - **Solution** — bilingual grounded RAG agent in Telegram.
 - **Architecture** — the §3 diagram, 30s.

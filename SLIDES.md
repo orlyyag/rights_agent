@@ -29,14 +29,19 @@ A Hebrew Telegram bot that answers "what am I entitled to?" — grounded in real
 
 <br>
 
-**Team:** `<your names>`
+**Orly Yagudayev**
 Final Project · Generative AI Systems Design · 2026
 
 ---
 
 ## The problem
 
-> **Personal hook:** *`<one-sentence story from your own life — e.g., a relative who almost missed a benefit because the rules are buried in Hebrew>`*
+> Every year Israelis forfeit benefits they're legally entitled to — because the rules are buried in dense Hebrew wiki pages most people can't navigate.
+
+<!-- Presenter: open with your own one-line story here — a relative who nearly missed a benefit, an immigrant lost in bituach leumi forms. Make it concrete and personal. -->
+
+<!-- HOOK_TODO: replace the line above with your personal one-sentence story before presenting -->
+
 
 <div class="columns">
 
@@ -72,7 +77,7 @@ Final Project · Generative AI Systems Design · 2026
 
 </div>
 
-<!-- speaker note: open with the screenshot on the next slide; this slide just lists what's there -->
+<!-- Presenter: the next slide shows the bot output; this one just frames what's there. -->
 
 ---
 
@@ -80,7 +85,7 @@ Final Project · Generative AI Systems Design · 2026
 
 ```mermaid
 flowchart LR
-    subgraph live["Live path · ~3s per question"]
+    subgraph live["Live path · ~8.7s median per question"]
         TG[Telegram user] --> GR[Guardrails<br/>allowlist · rate · length<br/>injection · PII]
         GR --> RT[Retriever<br/>top-8 lang-filtered]
         RT --> GN[Gemini 3.5 Flash<br/>grounded generate]
@@ -137,7 +142,8 @@ The bot itself never calls OpenAI — only the eval harness does.
 
 > The official Kol Zchut on-site AI chat returns the same numbers. Our pipeline pulls **today's amounts** (`2,103 ₪`); the off-the-shelf training corpus had stale `1,986 ₪` from May 2024.
 
-*Screenshot placeholder: `![w:400](path/to/bot_screenshot.png)`*
+<!-- SCREENSHOT_TODO: add a real Telegram screenshot here before presenting, e.g. ![w:400](assets/bot_he_answer.png) -->
+
 
 ---
 
