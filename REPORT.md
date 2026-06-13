@@ -213,7 +213,7 @@ flowchart LR
 4. **Testing & Validation** — heuristic retrieval metrics + a cross-provider LLM judge
    (OpenAI gpt-4.1, after calibration rejected the weaker o4-mini) for per-claim
    faithfulness, correctness, and relevancy + human calibration over the golden set; E2E
-   smoke; unit suite (179 tests).
+   smoke; unit suite (191 tests).
 
 **Challenges & Solutions** (the rubric rewards honest documentation)
 - **Challenge:** official corpus flattened benefit tables (silent wrong-number risk) and
@@ -304,9 +304,10 @@ calls) was measured against the linear path (1 call) and dropped as the default 
 cost ~56% more for no correctness gain (see Challenges). The designed next step
 (confidence-routed rescue) recovers the agent's only real benefit at linear latency.
 
-**Screenshots / Code Snippets:** _[To add before submission: Telegram screenshots — a
-Hebrew answer with citations, a Russian answer, a follow-up, and a refusal. The live bot
-and the pitch deck ([SLIDES.md](SLIDES.md)) carry these for the demo.]_
+**Screenshots / Code Snippets.** Live Telegram examples — a Hebrew answer with citations, a
+Russian answer, and an out-of-scope refusal — are shown in the demo and the pitch deck
+([SLIDES.md](SLIDES.md)); the bot is reachable for hands-on verification via the QR code on
+the deck's opening slide (`t.me/kolzchut_bot`).
 
 **Code repository:** https://github.com/orlyyag/rights_agent
 
@@ -320,7 +321,7 @@ and the pitch deck ([SLIDES.md](SLIDES.md)) carry these for the demo.]_
 - **Problem** — unclaimed rights + language barrier; why we chose it.
 - **Solution** — bilingual grounded RAG agent in Telegram.
 - **Architecture** — the §3 diagram, 30s.
-- **Evaluation** — RAGAS/judge numbers, he vs ru; "improve one dimension" before→after.
+- **Evaluation** — retrieval + cross-provider judge numbers (Hebrew set; RU eval is future work); the eval-repair quality story (27.5% → 89.5%).
 - **Business value** — hybrid KPIs (productivity/access + operational).
 - **Demo** — live query + backup video.
 - **Next steps** — WhatsApp, Arabic, better Russian, voice→text; **confidence-routed

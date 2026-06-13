@@ -42,7 +42,7 @@ style: |
 
 # Kol Zchut Rights Assistant
 
-A Hebrew Telegram bot that answers "what am I entitled to?" — grounded in real Kol Zchut pages, cited, in seconds.
+A bilingual (Hebrew + Russian) Telegram bot that answers "what am I entitled to?" — grounded in real Kol Zchut pages, cited, in seconds.
 
 <br>
 
@@ -87,7 +87,7 @@ Final Project · Generative AI Systems Design · 2026
 - Input guardrails: allowlist, rate-cap, 3-word minimum, 500-char maximum, injection-resistant
 
 **Honest scope**
-- Hebrew live · Russian served cross-lingually (native index in progress)
+- Hebrew + Russian both served from **native indexes** (bilingual `kz_v3`); other languages cross-lingual
 - **Auto language mode:** ask in any language, answered in that language from Hebrew sources
 - Linear RAG default · LangGraph agent loop opt-in · follow-up memory per chat
 - Local long-poll (no public URL needed for the demo)
@@ -236,7 +236,7 @@ The bot itself never calls OpenAI — only the eval harness does.
 <div class="columns">
 
 **Two-week roadmap**
-1. **Russian eval at parity** — native ru index + human-verified ru golden set; report native vs cross-lingual separately.
+1. **Russian evaluation** — the ru index is already native; the gap is a human-verified ru golden set, then report Hebrew vs Russian separately.
 2. **Chunking fix for in-032-class gaps** — the one residual false refusal is a chunk-boundary problem, not retrieval depth.
 3. **Cloud Run + webhook** — always-on, no laptop in the room.
 4. **Production guardrails** — structured admin metrics from LangSmith, abuse monitoring.
