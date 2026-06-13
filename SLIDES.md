@@ -19,6 +19,23 @@ style: |
   .stat { font-size: 80px; color: #1a73e8; font-weight: 700; line-height: 1; }
   .label { font-size: 22px; color: #5f6368; }
   .muted { color: #5f6368; }
+  .qrcard { background:#fff; display:inline-block; padding:20px; border-radius:16px;
+            box-shadow:0 2px 14px rgba(0,0,0,0.10); }
+---
+
+<!-- _class: title -->
+<!-- Presenter: this is slide 1. Put it up and say "before I say anything — scan this and ask it what you're entitled to." Let people start while you move on. -->
+
+# Try it live
+
+### Scan and ask the bot what you're entitled to
+
+<div class="qrcard">
+<img src="assets/qr_kolzchut_bot.png" width="300" alt="Scan to open the Kol Zchut rights bot on Telegram" />
+</div>
+
+**t.me/kolzchut_bot** · עברית · Русский · English
+
 ---
 
 <!-- _class: title -->
