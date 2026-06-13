@@ -492,7 +492,7 @@ Guardrails AI (heavier; deferred).
 - **Commands:** `/start`, `/help`, `/reset`; language **auto-detected** (he/ru). `/lang` and `/sources` cut (scope).
 - **Formatting (R6):** **HTML parse mode** (not MarkdownV2); one `render_answer(body, citations, disclaimer, lang)` owns all escaping + bidi; `disable_web_page_preview=True`. Day-1 on-phone bidi smoke.
 - **UX:** "typing…" action while processing; answer + clickable source links.
-- **Runtime:** **long-polling** is the demo (local, paired phone users). Cloud Run webhook is cut (TODOS, Tier-2).
+- **Runtime:** **long-polling** is the demo (local, paired phone users). Cloud Run webhook is cut (future work, Tier-2).
 - **Thin layer:** all logic lives in the agent core; the bot only maps Telegram I/O ↔ agent.
 
 ---
