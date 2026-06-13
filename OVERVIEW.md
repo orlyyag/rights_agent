@@ -60,15 +60,16 @@ A few things happen behind the scenes that make it more than a simple search:
 
 ## How we know it works
 
-We measure quality on a **human-verified question set** in both languages — checking that
-answers are correct, grounded, in the right language, and that the bot **refuses correctly**
-when a question is out of scope. Target: **90%+** of demo questions answered correctly,
-with sources.
+We measure quality on a **human-verified Hebrew question set** — checking that answers are
+correct, grounded, in the right language, and that the bot **refuses correctly** when a
+question is out of scope, with the LLM judge itself calibrated against human adjudication.
+Russian is served natively but its golden-set evaluation is planned before production.
+Target: **90%+** correct with sources (achieved on the Hebrew set).
 
 ## Status & timeline
 
 - **Course:** Gen AI development program (Google × Reichman University) — final project.
-- **Team:** 2 people. **Target demo date:** Saturday, **June 13, 2026**.
+- **Author:** Orly Yagudayev (solo submission). **Target demo date:** Saturday, **June 13, 2026**.
 - A working bilingual demo runs **locally**, reachable from a few paired phones — no cloud
   setup needed for the demo.
 
