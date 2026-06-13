@@ -416,17 +416,17 @@ These are the right brick-3 evals to build for REPORT.md §4 in the coming days 
 
 ---
 
-## Human-only critical path (won't progress without you)
+## Manual critical path (author-owned)
 
-These can't be fanned out to CC. From PLAN.md A4 / T16 / R8:
+Tasks that require manual work rather than code. From PLAN.md A4 / T16 / R8:
 
 - **2 stakeholder interviews** (ru-speaker / KZ user / social worker) — 15% of the grade
-  (Market Research & Technical Discovery). Notes go to REPORT.md §2.
+  (Market Research & Technical Discovery). Notes go to REPORT.md §2. ✅ done (Zvi, Zina).
 - **Russian golden set** (~20–30 questions from ru-native pages) — required for the
   bilingual eval claim. Hand-verify each.
 - **Business-KPI numbers** for REPORT.md §4 (productivity/access estimates + KZ
   operational savings).
-- **Pitch deck + backup demo video** Friday.
+- **Pitch deck + backup demo video.**
 
 ---
 
@@ -476,10 +476,10 @@ serving linear path over `kz_v3` with the concurrency + prompt fixes live.
 
 ### Remaining before submission (Sat 2026-06-13)
 
-**Needs Orly (human-only):**
-- [ ] Create `github.com/orlyyag/rights_agent` (private, empty) → then CC wires
-  the remote + pushes (REPORT already cites that URL). Only off-laptop backup.
-- [ ] Stakeholder interview notes → REPORT §2 (15% of grade)
+**Author tasks (manual):**
+- [ ] Create `github.com/orlyyag/rights_agent` (private, empty) → then wire
+  the remote + push (REPORT already cites that URL). Only off-laptop backup.
+- [x] Stakeholder interview notes → REPORT §2 (15% of grade) — done (Zvi, Zina)
 - [ ] Business-KPI estimates for REPORT §4 (productivity / reach / savings — label as estimates)
 - [ ] Demo video + pitch run-through (SLIDES.md is current with verified numbers)
 - [ ] Optional: RU golden set (~20 hand-verified questions) for the bilingual eval claim

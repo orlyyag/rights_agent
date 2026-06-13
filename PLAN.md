@@ -134,7 +134,7 @@ Architecture (§4) + Evaluations (§8) already meet/exceed the ask. **Confirmed:
 | A1 | **Submission doc = `REPORT.md`**, structured to the 5 rubric sections; reuses PLAN §4/§10 for architecture. PLAN.md stays the design source of truth. |
 | A2 | **"Improve one dimension" is required (methodology step 6).** Promote §0 #11 from optional lever to a **demonstrated result**: measure **baseline latency/cost** (max-quality path ≈ 4 live LLM calls ≈ 3–6s) → apply offline-judge + embedding-grade → record **baseline→after**. Serves the latency KPI (**<2s** target) and the trade-off story in one move. |
 | A3 | **Business impact = hybrid.** (a) User productivity/access: time-to-answer vs manual KZ navigation, estimated reach (1M+ ru speakers), demo-tester satisfaction rating; (b) Kol Zchut operational: estimated helpline/staff-hour savings. Fill the Business-KPI table baseline→after (estimates OK, **labeled as estimates**). |
-| A4 | **Stakeholder interviews (part of the 15%)** — 2 informal: a ru-speaking immigrant / KZ user / social worker. **Human-only**; capture notes for REPORT §2. |
+| A4 | **Stakeholder interviews (part of the 15%)** — 2 informal: a ru-speaking immigrant / KZ user / social worker. Primary research; notes captured in REPORT §2. |
 | A5 | **Technical-KPI table** filled with *achieved* values post-eval: accuracy (≥90% target), latency (<2s after A2), error rate (<5%), uptime (n/a local — note as polling demo). |
 | A6 | **Pitch:** 8-min flow (Hook→Problem→Solution→Architecture→Eval→Impact→Demo→Next), practice to 6; **record a backup demo video**; pairs split parts; no "age of AI" opener. |
 | A7 | **Problem §1 personal hook** — add "why this team chose it" (rubric prefers a problem you know from work/daily life). |
@@ -668,7 +668,6 @@ Two people, two largely independent lanes after a Day-1 interface handshake.
 
 ## 22. Implementation Tasks
 Synthesized from this review. Each derives from a specific decision above.
-Effort shown human / CC (AI-assisted).
 
 - [ ] **T1 (P1)** — ingest — Single-collection index + `source`/`lang` metadata + blue-green swap. Surfaced by §0 #1,#2,#4. Files: `ingest/index.py`, `config.py`, `rag/retriever.py`. Verify: build kz_v2, flip pointer, bot reads new; rollback works.
 - [ ] **T2 (P1)** — ingest — Resumable acquire + shared manifest-diff. §0 #7. Files: `ingest/acquire.py`, `ingest/mediawiki.py`. Verify: Ctrl-C mid-crawl, rerun skips current pages.
@@ -684,10 +683,10 @@ Effort shown human / CC (AI-assisted).
 - [ ] **T12 (P1)** — retriever — Similarity-floor calibration, per-language, against in/out-of-scope top-1 distributions; floor = lenient pre-filter, grade_docs is the gate. R3. Files: `rag/retriever.py`, `config.py`. Verify: off-topic refused, rare on-topic not wrongly refused.
 - [ ] **T13 (P1)** — eval — Add follow-up (two-turn) + colloquial-recovery golden cases, he + ru; build ru set from ru-native topics; report native vs cross-lingual separately. R4/R5/R8. Files: `eval/golden_*.jsonl`, `eval/run_judge.py`. Verify: follow-up resolves; colloquial pass-2 recovers.
 - [ ] **T14 (P1)** — retriever — Per-request active-collection pointer (handle-cached, atomic flip) so live-update needs no restart. R7. Files: `rag/retriever.py`, `scripts/sync.py`, `config.py`. Verify: flip pointer mid-session → next query uses new index, no restart.
-- [ ] **T15 (P1, human ~2h / CC draft)** — report — `REPORT.md` to the 5 rubric sections; CC drafts §1–§3 from PLAN, humans own the business case + interview notes. A1. Verify: every rubric section present, repo link in place.
-- [ ] **T16 (P1, human ~1h)** — research — 2 stakeholder interviews (ru-speaker / KZ user / social worker); notes → REPORT §2. A4. Verify: ≥2 insights summarized.
+- [ ] **T15 (P1)** — report — `REPORT.md` to the 5 rubric sections; §1–§3 drafted from PLAN, the business case + interview notes authored directly. A1. Verify: every rubric section present, repo link in place.
+- [ ] **T16 (P1)** — research — 2 stakeholder interviews (ru-speaker / KZ user / social worker); notes → REPORT §2. A4. Verify: ≥2 insights summarized.
 - [ ] **T17 (P1)** — perf — "Improve one dimension": measure baseline latency/cost, apply offline-judge + embedding-grade, record baseline→after; fill Technical-KPI table. A2/A5. Verify: after-latency < before; numbers in REPORT §4.
-- [ ] **T18 (P2, human ~2h)** — pitch — Deck to the 8-min flow + **backup demo video** + rehearse to 6 min. A6. Verify: runs in ≤8 min; video plays without network.
+- [ ] **T18 (P2)** — pitch — Deck to the 8-min flow + **backup demo video** + rehearse. A6. Verify: runs in ≤8 min; video plays without network.
 
 ---
 
