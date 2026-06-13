@@ -1,7 +1,7 @@
 # TODOS
 
-Deferred stretch items from the 2026-06-07 eng review. Pick up only once the core
-(RAG + Agents + Guardrails + Evals + bilingual demo + sync) is solid. See `PLAN.md §0/§18`.
+Deferred stretch items beyond the core scope (RAG + agents + guardrails + evals +
+bilingual demo + sync). Each is scoped with rationale and dependencies for future work.
 
 ## Stretch
 

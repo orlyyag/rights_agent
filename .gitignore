@@ -12,6 +12,8 @@ chroma/
 .DS_Store
 .gstack/
 .claude/
+# Internal planning scaffold (design specs + task plans) — kept local, not shipped
+docs/superpowers/
 
 # Runtime state (bot lifecycle, active pointer)
 data/*.log

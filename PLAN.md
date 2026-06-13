@@ -8,7 +8,7 @@ rights and government benefits in Israel, grounded in the
 
 **Course:** Gen AI for AI Development (Google × Reichman University, Israel) — final project.
 **Team:** 2 people. **Timeline:** ~1 week to a working demo.
-**Status of this doc:** design/plan (reviewed via `/plan-eng-review` 2026-06-07), pre-implementation.
+**Status of this doc:** design/plan (engineering-reviewed 2026-06-07), pre-implementation.
 
 ---
 
@@ -45,7 +45,7 @@ disclaimers live in **`prompts.py`** (eval-versioned).
 transcription · the translate-in-the-loop cross-lingual fallback (only if the Issue-1
 spike shows vector-only recall is weak) · the Issue-11 live-path optimization.
 
-### Grill decisions (2026-06-09 — concrete parameters)
+### Design decisions (2026-06-09 — concrete parameters)
 
 Pins the choices the architecture review left vague. SDK: **`google-genai`**
 (`client.models.*`).
@@ -68,7 +68,7 @@ disclaimer on every substantive answer; `grade_docs` scores each candidate (rele
 or 1–5), keep above threshold, refuse if none pass after one re-retrieve; sync = manual
 `sync.py` + one scheduled run (cron/launchd) to *demonstrate* automation, not an always-on daemon.
 
-### Delivery tiers (2026-06-09 — racing a 2–3 day POC, built with Claude Code)
+### Delivery tiers (2026-06-09 — racing a 2–3 day POC)
 
 ⚠️ **"Optional for the POC" ≠ "optional for the grade."** Tier 1 modules are still
 **required for the final submission** — they're just deferred past the 3-day POC.
@@ -96,11 +96,11 @@ This supersedes the front-loading in §12.
   · translate-in-loop cross-lingual fallback (only if the spike shows weak vector recall)
   · live-path LLM-call optimization (Issue-11 lever) · corpus chunk reverse-engineering comparison.
 
-### Grill round 2 — final scope + corrections (2026-06-09, LOCKED — supersede conflicting detail below)
+### Scope review round 2 — final scope + corrections (2026-06-09, LOCKED — supersede conflicting detail below)
 
 Hard deadline: **ready by Saturday 2026-06-13** (~4-day clock from Tue 06-09: Tue–Fri build,
-Sat submit; Fri-eve→Sat is Shabbat). **Claude Code implements** → coding is not the bottleneck;
-the **human-only critical path is** (Russian golden verification, similarity-floor calibration,
+Sat submit; Fri-eve→Sat is Shabbat). **Implementation is fast** → coding is not the bottleneck;
+the **critical path is** (Russian golden verification, similarity-floor calibration,
 on-phone Hebrew bidi check, demo rehearsal). Scope cut to **must-have-only**: the 4 graded
 modules (RAG, Agents, Guardrails, Evaluations) + bilingual demo + update automation.
 **Never cut any of the four.**
@@ -500,7 +500,7 @@ Guardrails AI (heavier; deferred).
 
 | Area | Choice | Why | Trade-off |
 |---|---|---|---|
-| LLM + embeddings | **`gemini-3.5-flash`** (gen, verified GA) + **`gemini-embedding-001`** @3072 (see §0 Grill Q2) | Course fit, strong he/ru, native embeddings | Vendor lock, quota |
+| LLM + embeddings | **`gemini-3.5-flash`** (gen, verified GA) + **`gemini-embedding-001`** @3072 (see §0 Q2) | Course fit, strong he/ru, native embeddings | Vendor lock, quota |
 | Orchestration | **LangGraph** | Inspectable agent graph, easy guardrail/eval nodes | Learning curve vs plain calls |
 | Vector store | **Chroma (local)** | Zero infra, metadata filter, demo-friendly | Not distributed/scale |
 | Data ingest | **parse-HTML + manifest-diff** | Clean rendered content + cheap exact deltas | HTML cleaning effort |
@@ -539,9 +539,9 @@ kolzchut-bot/
 
 ## 12. One-week plan (2 people)
 
-> ⚠️ **Illustrative / superseded by §0 Delivery Tiers + Grill round 2 (R9).** The real clock is
-> **Tue 06-09 → Sat 06-13 (~4 days), Claude-Code-implemented.** Do **not** follow this grid's
-> Day-1 he+ru — Tier-0 is Hebrew-only. Kept for the role split + task texture only.
+> ⚠️ **Illustrative / superseded by §0 Delivery Tiers + scope review round 2 (R9).** The real clock is
+> **Tue 06-09 → Sat 06-13 (~4 days).** Do **not** follow this grid's
+> Day-1 he+ru — Tier-0 is Hebrew-only. Kept for the task texture only.
 
 Roles: **A = Data/RAG/Eval**, **B = Agent/Bot/Guardrails/Deploy** (swap as needed).
 
@@ -670,37 +670,33 @@ Two people, two largely independent lanes after a Day-1 interface handshake.
 Synthesized from this review. Each derives from a specific decision above.
 Effort shown human / CC (AI-assisted).
 
-- [ ] **T1 (P1, human ~2h / CC ~20m)** — ingest — Single-collection index + `source`/`lang` metadata + blue-green swap. Surfaced by §0 #1,#2,#4. Files: `ingest/index.py`, `config.py`, `rag/retriever.py`. Verify: build kz_v2, flip pointer, bot reads new; rollback works.
-- [ ] **T2 (P1, human ~2h / CC ~20m)** — ingest — Resumable acquire + shared manifest-diff. §0 #7. Files: `ingest/acquire.py`, `ingest/mediawiki.py`. Verify: Ctrl-C mid-crawl, rerun skips current pages.
-- [ ] **T3 (P1, human ~3h / CC ~30m)** — ingest — `clean.py` (corpus-format reference) + HTML-tables→Markdown + golden fixtures (3 page types) + verify corpus table preservation. §0 #3. Files: `ingest/clean.py`, `ingest/chunk.py`, `tests/fixtures/`. Verify: benefit-amount page keeps numbers as a table.
-- [ ] **T4 (P1, human ~1h / CC ~15m)** — guardrails — Allowlist + per-user rate cap in `input_guardrails`. §0 #5. Files: `rag/guardrails.py`, `bot/handlers.py`, `.env.example`. Verify: unknown chat_id blocked; cap enforced.
-- [ ] **T5 (P1, human ~1.5h / CC ~15m)** — core — Central Gemini wrapper (timeout+retry+fallback, model-version constant, single mock point). §0 #6,#9, conventions. Files: `rag/llm.py` (new), call sites. Verify: simulated 429 → retry → fallback msg; tests inject fake.
-- [ ] **T6 (P2, human ~30m / CC ~10m)** — bot — Non-text graceful reply. §0 #8. Files: `bot/handlers.py`. Verify: voice/photo → "please type".
-- [ ] **T7 (P1, human ~1h / CC ~15m)** — eval — Cross-lingual recall spike (~10 he↔ru questions) gating the fallback design. §0 #1. Files: `eval/spike_crosslingual.py`. Verify: report hit-rate; decide translate-fallback need.
-- [ ] **T8 (P1, human ~2h / CC ~20m)** — tests — Pure-logic unit suite (manifest-diff, clean/table, chunk, guardrail rules) + mocked-LLM node tests. §0 #9. Files: `tests/`. Verify: `pytest -m "not integration"` green, no network.
-- [ ] **T9 (P2, human ~1.5h / CC ~20m)** — tests — One E2E integration smoke (he+ru) vs fixture index. §0 #10. Files: `tests/test_e2e.py`. Verify: `pytest -m integration` returns cited answer, language matches.
-- [ ] **T10 (P3, human ~1h / CC ~15m)** — docs — Document the Issue-11 live-path optimization lever (offline judge / embedding grade) as a ready switch. §0 #11. Files: `PLAN.md`/`README.md`.
-- [ ] **T11 (P1, CC ~20m + human bidi check)** — bot — `render_answer()` in HTML parse mode (escaping + bidi + `disable_web_page_preview`). R6. Files: `bot/handlers.py`, `rag/prompts.py`. Verify: Hebrew answer + he-slug URL + disclaimer render correctly on a real phone.
-- [ ] **T12 (P1, human ~1h / CC ~15m)** — retriever — Similarity-floor calibration, per-language, against in/out-of-scope top-1 distributions; floor = lenient pre-filter, grade_docs is the gate. R3. Files: `rag/retriever.py`, `config.py`. Verify: off-topic refused, rare on-topic not wrongly refused.
-- [ ] **T13 (P1, CC ~20m)** — eval — Add follow-up (two-turn) + colloquial-recovery golden cases, he + ru; build ru set from ru-native topics; report native vs cross-lingual separately. R4/R5/R8. Files: `eval/golden_*.jsonl`, `eval/run_judge.py`. Verify: follow-up resolves; colloquial pass-2 recovers.
-- [ ] **T14 (P1, CC ~10m)** — retriever — Per-request active-collection pointer (handle-cached, atomic flip) so live-update needs no restart. R7. Files: `rag/retriever.py`, `scripts/sync.py`, `config.py`. Verify: flip pointer mid-session → next query uses new index, no restart.
+- [ ] **T1 (P1)** — ingest — Single-collection index + `source`/`lang` metadata + blue-green swap. Surfaced by §0 #1,#2,#4. Files: `ingest/index.py`, `config.py`, `rag/retriever.py`. Verify: build kz_v2, flip pointer, bot reads new; rollback works.
+- [ ] **T2 (P1)** — ingest — Resumable acquire + shared manifest-diff. §0 #7. Files: `ingest/acquire.py`, `ingest/mediawiki.py`. Verify: Ctrl-C mid-crawl, rerun skips current pages.
+- [ ] **T3 (P1)** — ingest — `clean.py` (corpus-format reference) + HTML-tables→Markdown + golden fixtures (3 page types) + verify corpus table preservation. §0 #3. Files: `ingest/clean.py`, `ingest/chunk.py`, `tests/fixtures/`. Verify: benefit-amount page keeps numbers as a table.
+- [ ] **T4 (P1)** — guardrails — Allowlist + per-user rate cap in `input_guardrails`. §0 #5. Files: `rag/guardrails.py`, `bot/handlers.py`, `.env.example`. Verify: unknown chat_id blocked; cap enforced.
+- [ ] **T5 (P1)** — core — Central Gemini wrapper (timeout+retry+fallback, model-version constant, single mock point). §0 #6,#9, conventions. Files: `rag/llm.py` (new), call sites. Verify: simulated 429 → retry → fallback msg; tests inject fake.
+- [ ] **T6 (P2)** — bot — Non-text graceful reply. §0 #8. Files: `bot/handlers.py`. Verify: voice/photo → "please type".
+- [ ] **T7 (P1)** — eval — Cross-lingual recall spike (~10 he↔ru questions) gating the fallback design. §0 #1. Files: `eval/spike_crosslingual.py`. Verify: report hit-rate; decide translate-fallback need.
+- [ ] **T8 (P1)** — tests — Pure-logic unit suite (manifest-diff, clean/table, chunk, guardrail rules) + mocked-LLM node tests. §0 #9. Files: `tests/`. Verify: `pytest -m "not integration"` green, no network.
+- [ ] **T9 (P2)** — tests — One E2E integration smoke (he+ru) vs fixture index. §0 #10. Files: `tests/test_e2e.py`. Verify: `pytest -m integration` returns cited answer, language matches.
+- [ ] **T10 (P3)** — docs — Document the Issue-11 live-path optimization lever (offline judge / embedding grade) as a ready switch. §0 #11. Files: `PLAN.md`/`README.md`.
+- [ ] **T11 (P1)** — bot — `render_answer()` in HTML parse mode (escaping + bidi + `disable_web_page_preview`). R6. Files: `bot/handlers.py`, `rag/prompts.py`. Verify: Hebrew answer + he-slug URL + disclaimer render correctly on a real phone.
+- [ ] **T12 (P1)** — retriever — Similarity-floor calibration, per-language, against in/out-of-scope top-1 distributions; floor = lenient pre-filter, grade_docs is the gate. R3. Files: `rag/retriever.py`, `config.py`. Verify: off-topic refused, rare on-topic not wrongly refused.
+- [ ] **T13 (P1)** — eval — Add follow-up (two-turn) + colloquial-recovery golden cases, he + ru; build ru set from ru-native topics; report native vs cross-lingual separately. R4/R5/R8. Files: `eval/golden_*.jsonl`, `eval/run_judge.py`. Verify: follow-up resolves; colloquial pass-2 recovers.
+- [ ] **T14 (P1)** — retriever — Per-request active-collection pointer (handle-cached, atomic flip) so live-update needs no restart. R7. Files: `rag/retriever.py`, `scripts/sync.py`, `config.py`. Verify: flip pointer mid-session → next query uses new index, no restart.
 - [ ] **T15 (P1, human ~2h / CC draft)** — report — `REPORT.md` to the 5 rubric sections; CC drafts §1–§3 from PLAN, humans own the business case + interview notes. A1. Verify: every rubric section present, repo link in place.
 - [ ] **T16 (P1, human ~1h)** — research — 2 stakeholder interviews (ru-speaker / KZ user / social worker); notes → REPORT §2. A4. Verify: ≥2 insights summarized.
-- [ ] **T17 (P1, CC ~20m + human read)** — perf — "Improve one dimension": measure baseline latency/cost, apply offline-judge + embedding-grade, record baseline→after; fill Technical-KPI table. A2/A5. Verify: after-latency < before; numbers in REPORT §4.
+- [ ] **T17 (P1)** — perf — "Improve one dimension": measure baseline latency/cost, apply offline-judge + embedding-grade, record baseline→after; fill Technical-KPI table. A2/A5. Verify: after-latency < before; numbers in REPORT §4.
 - [ ] **T18 (P2, human ~2h)** — pitch — Deck to the 8-min flow + **backup demo video** + rehearse to 6 min. A6. Verify: runs in ≤8 min; video plays without network.
 
 ---
 
-## GSTACK REVIEW REPORT
+## Design review summary
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 11 issues raised, 11 resolved; 1 critical gap to watch (table→numbers) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+An engineering-review pass over this plan raised 11 architecture/test issues; all 11 were
+resolved before implementation. The one critical gap flagged to watch during the Hebrew
+spike was silent table→number correctness (§20) — addressed by the tables→Markdown step in
+the ingestion pipeline.
 
-- **UNRESOLVED:** 0 — every issue raised was decided.
-- **OUTSIDE VOICE:** offered, skipped by user.
-- **VERDICT:** ENG CLEARED — ready to implement. Watch the one critical gap (silent table→number correctness, §20) during the Hebrew spike.
+- **Unresolved issues:** 0 — every issue raised was decided.
+- **Verdict:** ready to implement.

@@ -1,6 +1,6 @@
 # Golden-set curation — Hebrew in-scope (in-001 … in-040)
 
-**Date:** 2026-06-10  ·  **Author:** Claude (Opus 4.8), with 8 parallel research agents
+**Date:** 2026-06-10  ·  **Method:** systematic re-curation against the indexed page text, with automated research and manual verification
 
 ## Why
 

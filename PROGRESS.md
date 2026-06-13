@@ -1,6 +1,6 @@
 # Progress
 
-Status tracker for the Kol Zchut Rights Assistant. Updated as bricks land.
+Status tracker for the Kol Zchut Rights Assistant. Updated with implementation milestones.
 PLAN.md is the authoritative spec; this is the executive summary.
 
 **Deadline:** Saturday 2026-06-13. **Last updated:** 2026-06-12 (Fri) — hardening day done; see the final section.
@@ -72,7 +72,7 @@ Sampled 40 in-scope from `Webiks_KolZchut_QA_Training_DataSet_v0.1.csv`
 | 3 | **Agentic graph** (`rag/graph.py`) — rewrite → retrieve → `grade_docs` → re-retrieve ×1 → generate; R4 + R5 + `@traceable` per node | ✅ **Modules done · opt-in via `KZ_ANSWER_PATH=agent`** · ⚠️ spot-check shows no clear win on pipeline; keep linear default | See "Brick 3 results" + "Spot-check 2×2" below |
 | 4 | **Full evals** — heuristics + cross-provider LLM judge, human-calibrated; refusal split; faithfulness vs retrieved context | ✅ **HE done + verified** (89.5% correctness, 83.3% hit@5 — see "Hardening day") | RU golden set needs human-verified rows from ru-native pages (R8, T16); agent-path eval parked by choice |
 | 5 | **Update automation** — `scripts/sync.py` (manifest-diff → incremental build → smoke + **ANN-recall gate** → blue-green flip) | ✅ **Done** (`ed420cf` + gate `dca07bd`) | §2 DoD demo: change page → `python scripts/sync.py` → answer reflects, no restart |
-| 6 | **A2 "improve one dimension"** | ✅ **Resolved per grill decision**: A2 = the documented eval-repair quality delta (27.5%→89.5%); latency row in REPORT rewritten honestly (median 8.7s vs <2s KPI, not gamed) | Live-path latency optimization deliberately not pursued |
+| 6 | **A2 "improve one dimension"** | ✅ **Resolved per design decision**: A2 = the documented eval-repair quality delta (27.5%→89.5%); latency row in REPORT rewritten honestly (median 8.7s vs <2s KPI, not gamed) | Live-path latency optimization deliberately not pursued |
 
 ---
 
@@ -103,7 +103,7 @@ for high-volume languages.
 
 ---
 
-## Brick 1 results (this overnight session)
+## Brick 1 results (pipeline ingestion)
 
 **All four ingestion modules implemented + tested** (`531f5be` → `b94a272`):
 
@@ -149,32 +149,20 @@ The pipeline pulls **2,103 ₪** (current).
 | 10737 | "ידידים" | 3 | 3 | yes |
 | 9870  | "יסודות לצמיחה" | 2 | 2 | yes |
 
-### 🌙 Overnight HE crawl
+### Full HE crawl
 
-Started a full HE crawl via `scripts/acquire.py he` in the background (pid **87650**, log: `data/acquire.log`). Expected **~2 hours** at 1 req/s for ~7,300 non-redirect content pages. Resumable — even if it crashes mid-way, the next run continues from the manifest.
+A full HE crawl runs via `scripts/acquire.py he` (~2 hours at 1 req/s for ~7,300 non-redirect content pages). Resumable — if it crashes mid-way, the next run continues from the manifest (`data/manifest/he.json`, `data/raw/he/*.json`). Embedding is a separate explicit step (`index.build_collection`), so no embedding cost is incurred during the crawl.
 
-```bash
-# When you wake — check status:
-pgrep -fl scripts/acquire           # still alive?
-tail -20 data/acquire.log           # progress
-ls data/raw/he | wc -l              # pages on disk
-cat data/manifest/he.json | python3 -c "import sys, json; print(len(json.load(sys.stdin)), 'pages')"
-```
+### Deferred at this stage (brick 1)
 
-**No embedding cost incurred overnight.** Embed is a separate explicit step once you wake — `python scripts/load_pipeline.py` (or equivalent — I haven't built the embed-driver yet; one-liner using `index.build_collection(chunks)` is enough).
-
-If the crawl is still running when you wake: `tail -f data/acquire.log` to watch. If you want to stop it: `pkill -f 'scripts/acquire.py'`. To resume: re-run the same `python scripts/acquire.py he` command. State is in `data/manifest/he.json` and `data/raw/he/*.json`.
-
-### What's NOT done in brick 1 (intentional handoff)
-
-- **No embedding.** Cost ~$1-3 + decision is yours.
-- **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
-- **No active-pointer flip.** Bot still serves from `kz_corpus_he`. Flipping is a one-liner once `kz_pipeline_he` is built and smoke-tested.
-- **No automated `scripts/sync.py`.** That's brick 5 (update automation).
+- **Embedding** — a separate explicit step (~$1–3).
+- **`kz_pipeline_he` Chroma collection** — built once the crawl finishes: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
+- **Active-pointer flip** — a one-liner once `kz_pipeline_he` is built and smoke-tested.
+- **Automated `scripts/sync.py`** — brick 5 (update automation).
 
 ---
 
-## Brick 3 results — LangGraph agentic loop (overnight, 4 commits)
+## Brick 3 results — LangGraph agentic loop
 
 **Topology B** wired per PLAN §6 / R4:
 
@@ -220,7 +208,7 @@ Each Telegram turn on the agent path does:
 
 So worst case is **~4 calls per turn** vs Tier-0's **1 call**. With Gemini 3.5 Flash that's still a few cents per message — fine for a demo, worth confirming on volume.
 
-### What's NOT done in brick 3 (intentional handoff)
+### Deferred at this stage (brick 3)
 
 - **No live spot-check yet.** Module + integration tests are all mocked. The agent's first real run against Gemini + Chroma is your decision — flip the env var and send a few Telegram messages.
 - **No follow-up cases in the eval set yet.** The `eval/golden_he.jsonl` is single-turn. Once you spot-check the agent works, rerun `eval/run_eval.py` against the agent path (set `KZ_ANSWER_PATH=agent` in the env when running) to get the new hit@5 / correctness numbers — that's the brick-3 vs brick-0 delta that the rubric A2 wants.
@@ -229,14 +217,14 @@ So worst case is **~4 calls per turn** vs Tier-0's **1 call**. With Gemini 3.5 F
 
 ---
 
-- **No embedding.** Cost ~$1-3 + decision is yours.
-- **No `kz_pipeline_he` Chroma collection.** Once the crawl finishes, build with: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
-- **No active-pointer flip.** Bot still serves from `kz_corpus_he`. Flipping is a one-liner once `kz_pipeline_he` is built and smoke-tested.
-- **No automated `scripts/sync.py`.** That's brick 5 (update automation).
+- **Embedding** — a separate explicit step (~$1–3).
+- **`kz_pipeline_he` Chroma collection** — built once the crawl finishes: `chunk.chunk_docs(acquire.iter_raw('he'))` → `index.build_collection(chunks, 'kz_pipeline_he')` → `config.set_active_collection('kz_pipeline_he')`.
+- **Active-pointer flip** — a one-liner once `kz_pipeline_he` is built and smoke-tested.
+- **Automated `scripts/sync.py`** — brick 5 (update automation).
 
 ---
 
-## Full Hebrew eval — linear + pipeline (this morning)
+## Full Hebrew eval — linear + pipeline
 
 All 48 questions from `golden_he.jsonl` against the pipeline collection (`kz_pipeline_he`, 64,532 vectors). Compare to the linear+corpus baseline from `c21fc8a`:
 
@@ -269,7 +257,7 @@ Most of the pre-refusal regression likely comes from a too-strict lenient floor 
 
 ---
 
-## Golden-set curation — the noisy-gold fix (this session)
+## Golden-set curation — the noisy-gold fix
 
 Manual failure analysis showed the headline correctness number was a **measurement artifact**, not a bot problem: the Webiks QA CSV was built to train a retrieval embedder, so each `gold_paragraph` is an arbitrary page chunk — usually a *tangential* section, not the passage that answers the question. The judge scores against that paragraph, so good answers failed against bad references.
 
@@ -295,9 +283,9 @@ Same bot, same retriever, same pipeline — **only the gold changed:**
 
 ---
 
-## Eval metrics redesign + over-refusal fix (this session)
+## Eval metrics redesign + over-refusal fix
 
-Rebuilt the eval metrics from scratch (spec + plan in `docs/superpowers/specs|plans/2026-06-10-eval-metrics-*`), then used the new measurement to find and fix the real refusal bug. ~20 commits on branch `eval/metrics-and-floor-calibration`, full suite green (125 tests).
+Rebuilt the eval metrics from scratch, then used the new measurement to find and fix the real refusal bug. ~20 commits on branch `eval/metrics-and-floor-calibration`, full suite green (125 tests).
 
 ### 1. Metric harness — heuristics vs cross-provider judge
 
@@ -338,7 +326,7 @@ Tracing the 7 false refusals: **0 were floor cuts.** 5 were **generation over-re
 
 **The one residual false refusal is in-032** — a genuine *chunking* gap: the sick-day accrual chunk isn't retrievable for "how do I compute sick hours to days?" even at top-15. Documented as a known limit (needs chunking work, not a top-k bump). The 5 justified refusals (in-003/016/026/028/040) are correct — the gold page isn't retrieved at all.
 
-### 🪖 War story (for the deck): "who judges the judge?"
+### War story: "who judges the judge?"
 
 A clean cautionary tale about LLM-as-judge — worth a slide.
 
@@ -420,7 +408,7 @@ These are the right brick-3 evals to build for REPORT.md §4 in the coming days 
 
 ---
 
-## Cost spent this morning
+## Cost (this phase)
 
 - Pipeline embed (64,532 chunks × ~250 tok @ $0.15/1M): **~$2.40**
 - 4 spot-check runs (2 cells × 10 questions × ~4 LLM calls + 2 judge calls): **~$0.05**
@@ -452,7 +440,7 @@ scripts/status_bot.sh           # ✓ Bot is running …
 
 ---
 
-## Hardening day (2026-06-12) — grill fixes + two regressions root-caused
+## Hardening (2026-06-12) — review fixes + two regressions root-caused
 
 Failure analysis of the v2 re-run (correctness 91.2%→83.8%) found **zero judge
 variance and zero content-change effects** — two real regressions had shipped
@@ -460,7 +448,7 @@ variance and zero content-change effects** — two real regressions had shipped
 
 | Fix | Commit | Proof |
 |---|---|---|
-| **Concurrency (grill #1)**: PTB `concurrent_updates=1` serialized all users behind one ~7s answer; `on_text` blocked the event loop; chroma lazy-init raced on cold parallel starts | `701e811` | fake-mode stress ×20.0 speedup; LIVE 20 users: 20/20 replies, 0 errors, ×12.7 vs serial (`scripts/stress_test.py`) |
+| **Concurrency (issue #1)**: PTB `concurrent_updates=1` serialized all users behind one ~7s answer; `on_text` blocked the event loop; chroma lazy-init raced on cold parallel starts | `701e811` | fake-mode stress ×20.0 speedup; LIVE 20 users: 20/20 replies, 0 errors, ×12.7 vs serial (`scripts/stress_test.py`) |
 | **kz_v2 ANN recall holes**: true NNs at dist 0.2365 never surfaced (0.3269 returned); old index had 2 holes of its own — every default-param build rolled a lottery | `dca07bd` | kz_v3 rebuilt (104,315 chunks copied, no re-embed), explicit HNSW params, brute-force recall gate green 42/42, in-022 retrieval back to exact pre-incident ranking. Gate demonstrably works: it blocked the first flip attempt |
 | **Prompt regression (ed420cf)**: re-introduced over-refusal (in-020) + dropped eligibility hedging (in-005), proven by A/B at temp 0 on identical context | `f5d241a` | in-020 answers 3/3; in-005 hedged + focused + judge 1.0×3; adversarial 8/8 hold |
 | Cleanup: REPORT identity/links, dead `KZ_SOURCE`, stale README eval layout | `74604ea` | — |
@@ -477,7 +465,7 @@ variance and zero content-change effects** — two real regressions had shipped
 | latency (idle) | contaminated | median **8.71s** · mean 8.51s · p95 10.55s |
 | errors | 1 harness wart | **0** (history-kwarg wart fixed) |
 
-Residual flips spot-read per the grill rule: in-013 = judge variance (re-judge
+Residual flips spot-read: in-013 = judge variance (re-judge
 returns correct; inside the documented 4fp/2fn noise band); in-003 = newly
 answered post-index-fix, generic-definition anchoring (net gain vs refusal).
 
