@@ -57,6 +57,18 @@ DAILY_LIMIT_MSG = {
     "ru": "Вы достигли дневного лимита вопросов. Продолжите завтра.",
     "auto": "You've reached today's question limit. Please come back tomorrow.",
 }
+# System at its global daily/throughput cap (botnet/cost backstop) — no LLM call.
+CAPACITY_MSG = {
+    "he": "השירות עמוס כרגע. נסו שוב מאוחר יותר.",
+    "ru": "Сервис сейчас перегружен. Попробуйте позже.",
+    "auto": "The service is at capacity right now. Please try again later.",
+}
+# Too many requests in flight — load-shed before queuing (memory/worker guard).
+BUSY_MSG = {
+    "he": "אני עסוק כרגע. נסו שוב בעוד רגע.",
+    "ru": "Я сейчас занят. Попробуйте через мгновение.",
+    "auto": "I'm busy right now. Please try again in a moment.",
+}
 
 # Caveat shown between body and citations, mirroring the official KZ on-site chat:
 # tells the user the answer is AI-generated and to verify via the source links.
@@ -68,6 +80,7 @@ AI_CAVEAT = {
 
 _LIMITER = guardrails.RateLimiter()
 _QUOTA = guardrails.DailyQuota()
+_GLOBAL = guardrails.GlobalLimiter()
 _BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
 
 # ── Concurrency (§0 #5 capacity) ─────────────────────────────────────────────
@@ -77,6 +90,11 @@ _BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
 # one conversation's turns ordered (history coherence) while different chats
 # run in parallel.
 _EXECUTOR = ThreadPoolExecutor(max_workers=config.BOT_WORKERS, thread_name_prefix="answer")
+# Load-shedding gate (#5): bounds in-flight (running + queued) work so a flood
+# is rejected with a static "busy" reply instead of growing an unbounded queue.
+# Acquired in on_text before submitting to the pool, released when the answer
+# completes. 0 = disabled (unbounded).
+_INFLIGHT = threading.BoundedSemaphore(config.BOT_MAX_INFLIGHT) if config.BOT_MAX_INFLIGHT > 0 else None
 _chat_locks: dict[int, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -133,12 +151,14 @@ def render_answer(ans: Answer) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
-def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None, quota=None) -> str:
-    """Sync core: allowlist → rate cap → input guards → daily quota → answer → render.
+def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None, quota=None,
+                global_limiter=None) -> str:
+    """Sync core: allowlist → rate cap → input guards → daily quota → global cap → answer.
     Pure and injectable; the async callbacks below are a thin shell over this."""
     answer_fn = answer_fn or answer_mod.answer_default
     limiter = rate if rate is not None else _LIMITER
     daily = quota if quota is not None else _QUOTA
+    glimiter = global_limiter if global_limiter is not None else _GLOBAL
 
     if not guardrails.is_allowed(chat_id):
         return _esc(PRIVATE)
@@ -157,6 +177,11 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None, quota=Non
         # never consumes a slot; consumes one slot only for a real answer.
         if not daily.allow(chat_id):
             return _esc(_localized(DAILY_LIMIT_MSG, lang))
+        # Global cap (botnet/cost backstop) — last gate before the LLM call.
+        # Internally locked (shared across all chats). Trips only at system-wide
+        # saturation, where charging an attacker's per-chat slot first is fine.
+        if not glimiter.allow():
+            return _esc(_localized(CAPACITY_MSG, lang))
         # thread_id = the Telegram chat_id, so a single conversation's traces group
         # in LangSmith — across linear or agent path, across many messages.
         # History (R5) is read BEFORE recording the current turn — the rewrite step
@@ -182,16 +207,25 @@ async def _send(update, text: str) -> None:
 
 
 async def on_text(update, context) -> None:
+    text = getattr(update.effective_message, "text", "") or ""
+    # Load-shed (#5): bound in-flight work. If we're at the ceiling, reply with a
+    # static "busy" message and make NO LLM call — sheds a flood instead of
+    # growing an unbounded executor queue. acquire is non-blocking.
+    if _INFLIGHT is not None and not _INFLIGHT.acquire(blocking=False):
+        await _send(update, _esc(_localized(BUSY_MSG, guardrails.detect_lang(text))))
+        return
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         # Off the event loop: build_reply blocks for seconds on LLM calls.
         # 20 users → 20 pool threads in flight, the loop keeps dispatching.
         reply = await asyncio.get_running_loop().run_in_executor(
-            _EXECUTOR, build_reply, update.effective_chat.id, update.effective_message.text)
+            _EXECUTOR, build_reply, update.effective_chat.id, text)
         await _send(update, reply)
     except Exception:  # noqa: BLE001 — never crash the process (§0 #6)
-        lang = guardrails.detect_lang(getattr(update.effective_message, "text", "") or "")
-        await _send(update, _esc(_localized(ERROR, lang)))
+        await _send(update, _esc(_localized(ERROR, guardrails.detect_lang(text))))
+    finally:
+        if _INFLIGHT is not None:
+            _INFLIGHT.release()
 
 
 async def on_nontext(update, context) -> None:

@@ -328,3 +328,55 @@ def test_build_reply_rejected_input_does_not_burn_quota(monkeypatch):
     assert q.remaining(6) == 1                                              # slot intact
     out = handlers.build_reply(6, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q)
     assert "ok" in out                                                      # real Q answered
+
+
+# ── Global cap + load-shedding (botnet / DOS backstops) ──────────────────────
+
+def test_build_reply_global_cap_blocks_across_chats(monkeypatch):
+    """The global cap trips regardless of which chat asks (botnet of accounts)."""
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+    q = guardrails.DailyQuota(cap=100, now=lambda: 1_000_000.0)
+    g = guardrails.GlobalLimiter(per_min=0, per_day=2, now=lambda: 1_000_000.0)
+    ans = lambda t, l, **k: Answer(text="ok", lang=l, citations=[], disclaimer="")
+    # three DIFFERENT chats, each under its own per-chat caps
+    o1 = handlers.build_reply(1, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q, global_limiter=g)
+    o2 = handlers.build_reply(2, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q, global_limiter=g)
+    o3 = handlers.build_reply(3, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q, global_limiter=g)
+    assert "ok" in o1 and "ok" in o2
+    assert "עמוס" in o3                     # 3rd chat blocked by the GLOBAL cap
+
+
+def test_on_text_sheds_load_when_saturated(monkeypatch):
+    """Beyond the in-flight ceiling, on_text replies 'busy' without an LLM call."""
+    import asyncio, threading
+
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    monkeypatch.setattr(handlers, "_INFLIGHT", threading.BoundedSemaphore(2))
+    calls = {"n": 0}
+    def slow(t, l, **k):
+        import time as _t; _t.sleep(0.3); calls["n"] += 1
+        return Answer(text="ok", lang=l, citations=[], disclaimer="")
+    monkeypatch.setattr(handlers.answer_mod, "answer_default", slow)
+
+    class _Msg:
+        text = "מה מגיע לי אחרי לידה"
+        async def reply_text(self, text, **kw): self.sent = text
+    class _Chat:
+        def __init__(self, c): self.id = c
+    class _Up:
+        def __init__(self, c): self.effective_message = _Msg(); self.effective_chat = _Chat(c)
+    class _Bot:
+        async def send_chat_action(self, **kw): pass
+    class _Ctx: bot = _Bot()
+
+    async def main():
+        ups = [_Up(700 + i) for i in range(6)]
+        await asyncio.gather(*(handlers.on_text(u, _Ctx()) for u in ups))
+        return ups
+    ups = asyncio.run(main())
+    sents = [u.effective_message.sent for u in ups]
+    busy = sum("busy" in s or "עסוק" in s for s in sents)
+    ok = sum("ok" in s for s in sents)
+    assert ok == 2 and busy == 4           # 2 admitted, 4 shed
+    assert calls["n"] == 2                  # shed requests made NO answer call

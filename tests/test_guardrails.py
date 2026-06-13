@@ -89,3 +89,34 @@ def test_daily_quota_zero_disables():
     q = guardrails.DailyQuota(cap=0)
     assert all(q.allow(7) for _ in range(50))
     assert q.remaining(7) == -1           # unlimited sentinel
+
+
+def test_global_limiter_per_minute():
+    clock = {"t": 1_000_000.0}
+    g = guardrails.GlobalLimiter(per_min=3, per_day=0, now=lambda: clock["t"])
+    assert [g.allow() for _ in range(4)] == [True, True, True, False]
+    clock["t"] += 61                       # window slides
+    assert g.allow() is True
+
+
+def test_global_limiter_per_day():
+    clock = {"t": 1_000_000.0}
+    g = guardrails.GlobalLimiter(per_min=0, per_day=2, now=lambda: clock["t"])
+    assert g.allow() and g.allow()
+    assert g.allow() is False              # daily cap hit across all chats
+    clock["t"] += 86_400
+    assert g.allow() is True               # next day resets
+
+
+def test_global_limiter_daily_full_does_not_consume_minute():
+    """When the day cap is full, a denied call must not eat a per-minute slot."""
+    clock = {"t": 1_000_000.0}
+    g = guardrails.GlobalLimiter(per_min=10, per_day=1, now=lambda: clock["t"])
+    assert g.allow() is True               # uses the 1 daily slot
+    assert g.allow() is False              # day full
+    assert len(g._minute) == 1             # only the successful call consumed a minute slot
+
+
+def test_global_limiter_zero_disables_both():
+    g = guardrails.GlobalLimiter(per_min=0, per_day=0)
+    assert all(g.allow() for _ in range(100))

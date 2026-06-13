@@ -122,9 +122,19 @@ RATE_LIMIT_PER_MIN = _env_int("KZ_RATE_LIMIT_PER_MIN", 20)
 # Per-chat daily question cap (budget guard for the open-to-all bot). Counts only
 # answered questions, resets at local midnight. 0 = unlimited.
 DAILY_QUESTION_CAP = _env_int("KZ_DAILY_QUESTION_CAP", 20)
+# System-wide caps across ALL chats — the botnet/cost backstop. Per-chat caps
+# can't see a flood spread over many accounts; these bound total spend. When the
+# daily cap trips, the bot replies with a static "at capacity" message and makes
+# NO LLM call. 0 = unlimited.
+GLOBAL_RATE_PER_MIN = _env_int("KZ_GLOBAL_RATE_PER_MIN", 60)
+GLOBAL_DAILY_CAP = _env_int("KZ_GLOBAL_DAILY_CAP", 1000)
 # Worker threads for the blocking answer core (handlers run it off the event
 # loop). Sized for the open-to-all demo: ~20 parallel users + headroom.
 BOT_WORKERS = _env_int("KZ_BOT_WORKERS", 32)
+# Load-shedding ceiling: max questions in flight (running + queued) before the
+# bot sheds with a "busy" reply instead of growing an unbounded queue under a
+# flood. Default = 2× workers (some queue tolerance). 0 = no shedding.
+BOT_MAX_INFLIGHT = _env_int("KZ_BOT_MAX_INFLIGHT", 64)
 MIN_QUESTION_WORDS = _env_int("KZ_MIN_QUESTION_WORDS", 3)  # short greetings retrieve noise
 MAX_QUESTION_CHARS = _env_int("KZ_MAX_QUESTION_CHARS", 500)  # ~80–100 words; protects cost, retrieval quality, injection surface
 

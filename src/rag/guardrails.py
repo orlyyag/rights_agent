@@ -5,6 +5,7 @@ Tier-0 path already does refuse-if-empty + citations in ``answer.py``).
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections import defaultdict, deque
 
@@ -127,3 +128,53 @@ class DailyQuota:
         if key != self._day():
             return self.cap
         return max(0, self.cap - n)
+
+
+class GlobalLimiter:
+    """System-wide cap across ALL chats — the botnet / cost backstop.
+
+    Per-chat limiters can't see a flood spread over many accounts (1,000 bots
+    each under the per-chat cap still = 1,000× the spend). This caps the *total*
+    answered-question rate and daily volume regardless of who asks. Unlike the
+    per-chat limiters, global state is shared across worker threads and is NOT
+    covered by the per-chat lock, so this class is internally locked. Counts only
+    answered questions (call ``allow`` as the last gate before answering).
+    In-memory → resets on restart; mirror to a store for multi-process setups.
+    """
+
+    def __init__(self, per_min: int | None = None, per_day: int | None = None,
+                 *, now=time.time):
+        self.per_min = config.GLOBAL_RATE_PER_MIN if per_min is None else per_min
+        self.per_day = config.GLOBAL_DAILY_CAP if per_day is None else per_day
+        self._now = now
+        self._lock = threading.Lock()
+        self._minute: deque = deque()      # timestamps within the last 60s
+        self._day_key: tuple[int, int] | None = None
+        self._day_count = 0
+
+    def _day(self) -> tuple[int, int]:
+        lt = time.localtime(self._now())
+        return (lt.tm_year, lt.tm_yday)
+
+    def allow(self) -> bool:
+        """True if the system is under both caps; consumes one slot if so.
+        Atomic across threads. Either cap set to <=0 disables that dimension."""
+        with self._lock:
+            t = self._now()
+            if self.per_min > 0:
+                while self._minute and t - self._minute[0] > 60:
+                    self._minute.popleft()
+                if len(self._minute) >= self.per_min:
+                    return False
+            if self.per_day > 0:
+                day = self._day()
+                if day != self._day_key:
+                    self._day_key, self._day_count = day, 0
+                if self._day_count >= self.per_day:
+                    return False
+            # both checks passed → consume
+            if self.per_min > 0:
+                self._minute.append(t)
+            if self.per_day > 0:
+                self._day_count += 1
+            return True

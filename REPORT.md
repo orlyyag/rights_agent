@@ -132,6 +132,27 @@ cross-lingually and answers in the question's language.
 5. **Evaluations** (golden set + heuristics + human-calibrated cross-provider LLM judge)
    → quality claims are measured, not vibes; regressions are caught before users see them.
 
+**Security & abuse model.** The bot is publicly reachable: Telegram bots are addressable
+by their `@username` (searchable in-app; there is no "unlisted bot" toggle), so a shared
+link is a convenience, not an access gate. Two things follow. (1) **No network-DDoS
+surface:** the bot uses *long-polling* (outbound calls to Telegram), so there is no inbound
+endpoint to flood — Telegram is the front door and absorbs/limits inbound traffic. The real
+threat is therefore **cost-exhaustion**, not downtime. (2) **Defense is layered at the
+application level**, since a botnet can spread a flood across many accounts that each stay
+under any per-user limit:
+
+| Layer | Control | Bounds |
+|---|---|---|
+| Per-chat | rate cap (20/min) + daily cap (20/day) | one account |
+| Global | system-wide answers/min + answers/day cap → static "at capacity" reply, no LLM call | total spend across *all* accounts (the botnet case) |
+| Load-shed | bounded in-flight queue → "busy" reply instead of unbounded growth | memory / worker exhaustion under a spike |
+| Access | allowlist (`ALLOWED_CHAT_IDS`) — off for the open demo, one-line lockdown after | who may use it at all |
+| Backstop | provider-side hard billing cap on the LLM key | guaranteed spend ceiling regardless of bot logic |
+
+Counters are in-memory (reset on restart); a hardened deployment would persist them and add
+a normalized-question cache (collapses repeated flood payloads to zero marginal cost) and a
+tap-to-start human check.
+
 **System Architecture Diagram.** Data sources → preprocessing → GenAI components →
 output, with the offline pipeline feeding the live path through a per-request collection
 pointer:
