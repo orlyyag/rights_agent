@@ -300,3 +300,31 @@ def test_app_enables_concurrent_updates(monkeypatch):
     monkeypatch.setattr(config, "TELEGRAM_BOT_TOKEN", "123456:TEST-token")
     app = telegram_app.build_app()
     assert app.concurrent_updates and app.concurrent_updates > 1
+
+
+# ── Daily budget cap (abuse / cost guard) ────────────────────────────────────
+
+def test_build_reply_daily_cap_blocks_after_n(monkeypatch):
+    """A chat is answered up to the daily cap, then gets the daily-limit message."""
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+    q = guardrails.DailyQuota(cap=2, now=lambda: 1_000_000.0)
+    ans = lambda txt, l, **kw: Answer(text="ok", lang=l, citations=[], disclaimer="")
+    out1 = handlers.build_reply(5, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q)
+    out2 = handlers.build_reply(5, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q)
+    out3 = handlers.build_reply(5, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q)
+    assert "ok" in out1 and "ok" in out2
+    assert "מכסת השאלות היומית" in out3            # 3rd blocked
+
+
+def test_build_reply_rejected_input_does_not_burn_quota(monkeypatch):
+    """Too-short input must not consume a daily slot."""
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    monkeypatch.setattr(config, "MIN_QUESTION_WORDS", 3)
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+    q = guardrails.DailyQuota(cap=1, now=lambda: 1_000_000.0)
+    ans = lambda txt, l, **kw: Answer(text="ok", lang=l, citations=[], disclaimer="")
+    handlers.build_reply(6, "שלום", answer_fn=ans, rate=rl, quota=q)        # too short
+    assert q.remaining(6) == 1                                              # slot intact
+    out = handlers.build_reply(6, "מה מגיע לי אחרי לידה", answer_fn=ans, rate=rl, quota=q)
+    assert "ok" in out                                                      # real Q answered

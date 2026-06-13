@@ -119,6 +119,9 @@ def _parse_ids(raw: str) -> frozenset[int]:
 
 ALLOWED_CHAT_IDS = _parse_ids(_env("ALLOWED_CHAT_IDS"))  # from @userinfobot
 RATE_LIMIT_PER_MIN = _env_int("KZ_RATE_LIMIT_PER_MIN", 20)
+# Per-chat daily question cap (budget guard for the open-to-all bot). Counts only
+# answered questions, resets at local midnight. 0 = unlimited.
+DAILY_QUESTION_CAP = _env_int("KZ_DAILY_QUESTION_CAP", 20)
 # Worker threads for the blocking answer core (handlers run it off the event
 # loop). Sized for the open-to-all demo: ~20 parallel users + headroom.
 BOT_WORKERS = _env_int("KZ_BOT_WORKERS", 32)

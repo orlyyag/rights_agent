@@ -82,3 +82,48 @@ class RateLimiter:
             return False
         q.append(t)
         return True
+
+
+class DailyQuota:
+    """Per-chat daily question cap — the budget guard for the open-to-all bot.
+
+    Counts only questions the caller is about to answer (call ``allow`` after the
+    cheap input guards), so rejected input never burns quota. Buckets by local
+    calendar day, so each chat gets a fresh allowance at local midnight.
+    In-memory → resets on restart, like :class:`RateLimiter` (Q7); persist to a
+    file/DB if the bot must survive restarts without resetting quotas. Caller
+    serializes per-chat access (the per-chat lock in ``handlers.build_reply``).
+    """
+
+    def __init__(self, cap: int | None = None, *, now=time.time):
+        self.cap = cap if cap is not None else config.DAILY_QUESTION_CAP
+        self._now = now
+        self._counts: dict[int, tuple[tuple[int, int], int]] = {}  # chat → (day_key, n)
+
+    def _day(self) -> tuple[int, int]:
+        lt = time.localtime(self._now())
+        return (lt.tm_year, lt.tm_yday)
+
+    def allow(self, chat_id: int) -> bool:
+        """True if the chat is under its daily cap; consumes one slot if so.
+        ``cap <= 0`` disables the limit (always allow)."""
+        if self.cap <= 0:
+            return True
+        day = self._day()
+        key, n = self._counts.get(chat_id, (day, 0))
+        if key != day:          # new local day → reset this chat's counter
+            n = 0
+        if n >= self.cap:
+            self._counts[chat_id] = (day, n)
+            return False
+        self._counts[chat_id] = (day, n + 1)
+        return True
+
+    def remaining(self, chat_id: int) -> int:
+        """Questions left today (for an optional 'N left' hint). Read-only."""
+        if self.cap <= 0:
+            return -1           # unlimited
+        key, n = self._counts.get(chat_id, (self._day(), 0))
+        if key != self._day():
+            return self.cap
+        return max(0, self.cap - n)

@@ -52,6 +52,11 @@ TOO_LONG = {
     "ru": "Вопрос слишком длинный. Сформулируйте короче (до 500 символов).",
     "auto": "The question is too long. Please keep it under 500 characters.",
 }
+DAILY_LIMIT_MSG = {
+    "he": "הגעת למכסת השאלות היומית. אפשר להמשיך מחר.",
+    "ru": "Вы достигли дневного лимита вопросов. Продолжите завтра.",
+    "auto": "You've reached today's question limit. Please come back tomorrow.",
+}
 
 # Caveat shown between body and citations, mirroring the official KZ on-site chat:
 # tells the user the answer is AI-generated and to verify via the source links.
@@ -62,6 +67,7 @@ AI_CAVEAT = {
 }
 
 _LIMITER = guardrails.RateLimiter()
+_QUOTA = guardrails.DailyQuota()
 _BOLD_RE = re.compile(r"\*\*([^*\n]+?)\*\*")
 
 # ── Concurrency (§0 #5 capacity) ─────────────────────────────────────────────
@@ -127,15 +133,16 @@ def render_answer(ans: Answer) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
-def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
-    """Sync core: allowlist → rate cap → detect language → answer → render.
+def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None, quota=None) -> str:
+    """Sync core: allowlist → rate cap → input guards → daily quota → answer → render.
     Pure and injectable; the async callbacks below are a thin shell over this."""
     answer_fn = answer_fn or answer_mod.answer_default
     limiter = rate if rate is not None else _LIMITER
+    daily = quota if quota is not None else _QUOTA
 
     if not guardrails.is_allowed(chat_id):
         return _esc(PRIVATE)
-    # Per-chat critical section: rate-window, history read, answer, history
+    # Per-chat critical section: rate-window, quota, history read, answer, history
     # write happen atomically per conversation. Different chats interleave
     # freely on the worker pool.
     with _chat_lock(chat_id):
@@ -146,6 +153,10 @@ def build_reply(chat_id: int, text: str, *, answer_fn=None, rate=None) -> str:
             return _esc(_localized(TOO_SHORT, lang))
         if guardrails.too_long(text):
             return _esc(_localized(TOO_LONG, lang))
+        # Daily budget cap — checked AFTER the input guards so rejected input
+        # never consumes a slot; consumes one slot only for a real answer.
+        if not daily.allow(chat_id):
+            return _esc(_localized(DAILY_LIMIT_MSG, lang))
         # thread_id = the Telegram chat_id, so a single conversation's traces group
         # in LangSmith — across linear or agent path, across many messages.
         # History (R5) is read BEFORE recording the current turn — the rewrite step

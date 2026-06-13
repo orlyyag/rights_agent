@@ -57,3 +57,35 @@ def test_rate_limiter_sliding_window():
     assert rl.allow(7) is False          # cap hit
     clock["t"] = 61.0                     # window slides past 60s
     assert rl.allow(7) is True
+
+
+def test_daily_quota_caps_per_chat():
+    """A chat can ask up to `cap` questions, then is blocked the same day."""
+    clock = {"t": 1_000_000.0}            # fixed instant → same local day
+    q = guardrails.DailyQuota(cap=3, now=lambda: clock["t"])
+    assert [q.allow(7) for _ in range(4)] == [True, True, True, False]
+    assert q.remaining(7) == 0
+
+
+def test_daily_quota_resets_next_day():
+    clock = {"t": 1_000_000.0}
+    q = guardrails.DailyQuota(cap=2, now=lambda: clock["t"])
+    assert q.allow(7) and q.allow(7)
+    assert q.allow(7) is False            # day-1 cap hit
+    clock["t"] += 86_400                  # advance one full day
+    assert q.allow(7) is True             # fresh allowance
+    assert q.remaining(7) == 1
+
+
+def test_daily_quota_isolated_per_chat():
+    clock = {"t": 1_000_000.0}
+    q = guardrails.DailyQuota(cap=1, now=lambda: clock["t"])
+    assert q.allow(1) is True
+    assert q.allow(1) is False
+    assert q.allow(2) is True             # different chat unaffected
+
+
+def test_daily_quota_zero_disables():
+    q = guardrails.DailyQuota(cap=0)
+    assert all(q.allow(7) for _ in range(50))
+    assert q.remaining(7) == -1           # unlimited sentinel
