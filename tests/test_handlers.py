@@ -156,6 +156,60 @@ def test_build_reply_history_isolated_per_chat(monkeypatch):
     session.reset(b)
 
 
+def test_followup_preserves_memory_on_default_linear_path(monkeypatch):
+    """Reported bug: on the DEFAULT linear path, a follow-up ('what if I'm
+    self-employed?') was answered from scratch — session history never reached
+    retrieval. This drives the REAL answer_default (no answer_fn injected), so it
+    exercises the routing that used to drop history. Memory must persist across
+    turns and clear only on /reset.
+    """
+    from rag import llm, retriever
+    from schema import ChunkMeta, RetrievedChunk
+
+    monkeypatch.setattr(config, "ANSWER_PATH", "linear")
+    monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
+    chat_id = 9001
+    session.reset(chat_id)
+
+    retrieval_queries: list[str] = []
+
+    def fake_retrieve(query, lang, **kw):
+        retrieval_queries.append(query)
+        meta = ChunkMeta(pageid=1, title="דמי אבטלה", url="https://kz/unemployment",
+                         lang="he", section="", lastrevid=0, source="corpus")
+        return [RetrievedChunk(text="body", meta=meta, score=0.9)]
+
+    def fake_generate(prompt, system=None):
+        # The history-aware rewrite step and the answer generation share
+        # llm.generate; distinguish by the rewrite system prompt.
+        if system and "query rewriter" in system:
+            return ('{"query": "דמי אבטלה לעצמאים", "is_follow_up": true, '
+                    '"reason": "follow-up about self-employment"}')
+        return "grounded answer about unemployment rights"
+
+    monkeypatch.setattr(retriever, "retrieve", fake_retrieve)
+    monkeypatch.setattr(llm, "generate", fake_generate)
+    rl = guardrails.RateLimiter(per_min=100, now=lambda: 0.0)
+
+    # Turn 1 — the original question about unemployment rights.
+    handlers.build_reply(chat_id, "מה הזכויות שלי בתקופת אבטלה?", rate=rl)
+    # Turn 2 — elliptical follow-up; must be read as "...for the self-employed".
+    handlers.build_reply(chat_id, "ומה אם אני עצמאי?", rate=rl)
+
+    # Turn 1 retrieved with the raw question (no prior turns yet).
+    assert retrieval_queries[0] == "מה הזכויות שלי בתקופת אבטלה?"
+    # Turn 2 retrieved with the REWRITTEN standalone query — proves history was
+    # used instead of answering from scratch.
+    assert retrieval_queries[1] == "דמי אבטלה לעצמאים"
+
+    # /reset clears memory: the next identical follow-up is no longer fused with
+    # the prior topic — it retrieves on the raw message.
+    session.reset(chat_id)
+    handlers.build_reply(chat_id, "ומה אם אני עצמאי?", rate=rl)
+    assert retrieval_queries[2] == "ומה אם אני עצמאי?"
+    session.reset(chat_id)
+
+
 def test_build_reply_rejects_too_long_without_calling_answer(monkeypatch):
     monkeypatch.setattr(config, "ALLOWED_CHAT_IDS", frozenset())
     monkeypatch.setattr(config, "MIN_QUESTION_WORDS", 3)

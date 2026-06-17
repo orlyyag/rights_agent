@@ -10,7 +10,7 @@ import re
 
 import config
 from rag import citations as citations_mod
-from rag import llm, prompts, retriever
+from rag import llm, prompts, retriever, rewrite
 from rag.llm import _set_thread_id, traceable
 from schema import Answer, Citation, RetrievedChunk
 
@@ -82,16 +82,31 @@ def _localized_empty_refusal(question: str, lang: str, generate_fn) -> str:
 
 
 @traceable(name="answer:linear", run_type="chain")
-def answer(question: str, lang: str, *, retrieve_fn=None, generate_fn=None,
+def answer(question: str, lang: str,
+           history: list[tuple[str, str]] | None = None,
+           *, retrieve_fn=None, generate_fn=None, rewrite_fn=None,
            thread_id: str | None = None) -> Answer:
-    """Answer one question. ``retrieve_fn``/``generate_fn`` are injectable for tests.
+    """Answer one question. ``retrieve_fn``/``generate_fn``/``rewrite_fn`` are
+    injectable for tests. ``history`` is the recent (role, text) turns from the
+    per-chat session; when present, an elliptical follow-up ("ולעצמאים?") is
+    condensed into a self-contained retrieval query (R5) so conversational memory
+    carries across turns instead of each message being answered from scratch.
     ``thread_id`` groups this call with its child traces in LangSmith (set by the
     bot to chat_id, by the eval to the question id)."""
     _set_thread_id(thread_id)
     retrieve_fn = retrieve_fn or retriever.retrieve
     generate_fn = generate_fn or llm.generate
+    rewrite_fn = rewrite_fn or rewrite.rewrite_query
 
-    docs = retrieve_fn(question, lang)
+    # History-aware condense (R5): fold a follow-up into a standalone query before
+    # retrieval. No history → no LLM call (Tier-0 stays cheap), retrieval runs on
+    # the raw question. Generation below still uses the original ``question``,
+    # matching the agent path (graph.node_generate) so both paths answer identically.
+    search_q = question
+    if history:
+        search_q = rewrite_fn(question, history=history, generate_fn=generate_fn).query or question
+
+    docs = retrieve_fn(search_q, lang)
     if not docs:  # nothing above the floor → refuse, don't invent (§0 #6)
         return Answer(text=_localized_empty_refusal(question, lang, generate_fn), lang=lang, citations=[],
                       disclaimer="", refused=True)
@@ -137,7 +152,7 @@ def answer_default(question: str, lang: str,
     conversation/eval-question."""
     if (config.ANSWER_PATH or "").lower() == "agent":
         return answer_agent(question, lang, history=history, thread_id=thread_id)
-    return answer(question, lang, thread_id=thread_id)
+    return answer(question, lang, history=history, thread_id=thread_id)
 
 
 def _citations(chunks: list[RetrievedChunk], lang: str = "he") -> list[Citation]:

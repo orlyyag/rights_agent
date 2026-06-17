@@ -1,7 +1,7 @@
 """Linear Tier-0 RAG path: refuse-if-empty, grounded answer, deduped citations."""
 from __future__ import annotations
 
-from rag import answer, prompts
+from rag import answer, prompts, rewrite
 from schema import ChunkMeta, RetrievedChunk
 
 
@@ -112,3 +112,50 @@ def test_auto_answer_falls_back_when_disclaimer_tag_is_empty():
                       generate_fn=lambda p, system=None: body)
     assert "[DISCLAIMER]" not in a.text
     assert a.disclaimer == prompts.disclaimer("auto")
+
+
+# ── R5: the linear path must be history-aware (memory bug regression) ──────────
+def test_linear_answer_uses_history_to_rewrite_followup():
+    """An elliptical follow-up retrieves with the history-condensed standalone
+    query, not the raw message. Regression for the dropped-memory bug: the linear
+    path used to ignore session history entirely and answer from scratch."""
+    history = [("user", "מה הזכויות שלי בתקופת אבטלה?"),
+               ("assistant", "דמי אבטלה מהביטוח הלאומי.")]
+    seen = {}
+
+    def fake_retrieve(q, l):
+        seen["query"] = q
+        return [_rc("A", "https://a")]
+
+    a = answer.answer(
+        "ולעצמאים?", "he", history=history,
+        retrieve_fn=fake_retrieve,
+        rewrite_fn=lambda q, history=None, generate_fn=None:
+            rewrite.RewriteResult("דמי אבטלה לעצמאים", True),
+        generate_fn=lambda p, system=None: "grounded",
+    )
+    assert seen["query"] == "דמי אבטלה לעצמאים"  # retrieval used the standalone rewrite
+    assert a.refused is False
+
+
+def test_linear_answer_no_history_skips_rewrite():
+    """Tier-0 stays cheap: the first turn (no history) makes no rewrite LLM call,
+    and retrieval runs on the raw question."""
+    calls = {"rewrite": 0}
+    seen = {}
+
+    def fake_rewrite(q, history=None, generate_fn=None):
+        calls["rewrite"] += 1
+        return rewrite.RewriteResult(q, False)
+
+    def fake_retrieve(q, l):
+        seen["query"] = q
+        return [_rc("A", "https://a")]
+
+    answer.answer(
+        "מה זכאות מגיעה לי?", "he",
+        retrieve_fn=fake_retrieve, rewrite_fn=fake_rewrite,
+        generate_fn=lambda p, system=None: "grounded",
+    )
+    assert calls["rewrite"] == 0          # no history → no rewrite call
+    assert seen["query"] == "מה זכאות מגיעה לי?"
